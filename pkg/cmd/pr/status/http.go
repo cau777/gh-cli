@@ -1,15 +1,16 @@
 package status
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/cli/cli/v2/pkg/set"
-
 	ghauth "github.com/cli/go-gh/v2/pkg/auth"
+	"golang.org/x/sync/errgroup"
 )
 
 type requestOptions struct {
@@ -31,159 +32,109 @@ type pullRequestsPayload struct {
 
 func pullRequestStatus(httpClient *http.Client, repo ghrepo.Interface, options requestOptions) (*pullRequestsPayload, error) {
 	apiClient := api.NewClientFromHTTP(httpClient)
-	type edges struct {
-		TotalCount int
-		Edges      []struct {
-			Node api.PullRequest
-		}
-	}
-
-	type response struct {
-		Repository struct {
-			DefaultBranchRef struct {
-				Name string
-			}
-			PullRequests edges
-			PullRequest  *api.PullRequest
-		}
-		ViewerCreated   edges
-		ReviewRequested edges
-	}
-
-	var fragments string
-	if len(options.Fields) > 0 {
-		fields := set.NewStringSet()
-		fields.AddValues(options.Fields)
-		// these are always necessary to find the PR for the current branch
-		fields.AddValues([]string{"isCrossRepository", "headRepositoryOwner", "headRefName"})
-		gr := api.PullRequestGraphQL(fields.ToSlice())
-		fragments = fmt.Sprintf("fragment pr on PullRequest{%s}fragment prWithReviews on PullRequest{...pr}", gr)
-	} else {
-		var err error
-		fragments, err = pullRequestFragment(options.ConflictStatus, options.CheckRunAndStatusContextCountsSupported)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	queryPrefix := `
-	query PullRequestStatus($owner: String!, $repo: String!, $headRefName: String!, $viewerQuery: String!, $reviewerQuery: String!, $per_page: Int = 10) {
-		repository(owner: $owner, name: $repo) {
-			defaultBranchRef {
-				name
-			}
-			pullRequests(headRefName: $headRefName, first: $per_page, orderBy: { field: CREATED_AT, direction: DESC }) {
-				totalCount
-				edges {
-					node {
-						...prWithReviews
-					}
-				}
-			}
-		}
-	`
-	if options.CurrentPR > 0 {
-		queryPrefix = `
-		query PullRequestStatus($owner: String!, $repo: String!, $number: Int!, $viewerQuery: String!, $reviewerQuery: String!, $per_page: Int = 10) {
-			repository(owner: $owner, name: $repo) {
-				defaultBranchRef {
-					name
-				}
-				pullRequest(number: $number) {
-					...prWithReviews
-					baseRef {
-						branchProtectionRule {
-							requiredApprovingReviewCount
-						}
-					}
-				}
-			}
-		`
-	}
-
-	query := fragments + queryPrefix + `
-			viewerCreated: search(query: $viewerQuery, type: ISSUE, first: $per_page) {
-				totalCount: issueCount
-				edges {
-					node {
-					...prWithReviews
-					}
-				}
-			}
-			reviewRequested: search(query: $reviewerQuery, type: ISSUE, first: $per_page) {
-				totalCount: issueCount
-				edges {
-					node {
-					...pr
-					}
-				}
-			}
-		}
-	`
 
 	currentUsername, err := getCurrentUsername(options.Username, repo.RepoHost(), apiClient)
-
 	if err != nil {
 		return nil, err
 	}
 
 	viewerQuery := fmt.Sprintf("repo:%s state:open is:pr author:%s", ghrepo.FullName(repo), currentUsername)
-	reviewerQuery := fmt.Sprintf("repo:%s state:open review-requested:%s", ghrepo.FullName(repo), currentUsername)
+	reviewerQuery := fmt.Sprintf("repo:%s state:open is:pr review-requested:%s", ghrepo.FullName(repo), currentUsername)
 
-	currentPRHeadRef := options.HeadRef
-	branchWithoutOwner := currentPRHeadRef
-	if _, after, ok := strings.Cut(currentPRHeadRef, ":"); ok {
-		branchWithoutOwner = after
+	viewerFields := options.Fields
+	reviewerFields := options.Fields
+	currentFields := options.Fields
+	keepMergeable := slices.Contains(options.Fields, "mergeable")
+	if len(options.Fields) == 0 {
+		viewerFields = []string{"headRefName", "latestReviews", "statusCheckRollup"}
+		reviewerFields = []string{"headRefName", "statusCheckRollup"}
+		currentFields = []string{"latestReviews", "statusCheckRollup"}
+		keepMergeable = options.ConflictStatus
 	}
 
-	variables := map[string]any{
-		"viewerQuery":   viewerQuery,
-		"reviewerQuery": reviewerQuery,
-		"owner":         repo.RepoOwner(),
-		"repo":          repo.RepoName(),
-		"headRefName":   branchWithoutOwner,
-		"number":        options.CurrentPR,
+	payload := &pullRequestsPayload{}
+	g, _ := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		res, err := api.SearchPullRequestsREST(apiClient, repo, viewerQuery, 10, viewerFields)
+		if err != nil {
+			return err
+		}
+		if !keepMergeable {
+			clearMergeable(res.PullRequests)
+		}
+		payload.ViewerCreated = *res
+		return nil
+	})
+
+	g.Go(func() error {
+		res, err := api.SearchPullRequestsREST(apiClient, repo, reviewerQuery, 10, reviewerFields)
+		if err != nil {
+			return err
+		}
+		if !keepMergeable {
+			clearMergeable(res.PullRequests)
+		}
+		payload.ReviewRequested = *res
+		return nil
+	})
+
+	if options.CurrentPR > 0 {
+		g.Go(func() error {
+			pr, err := api.LookupPullRequestByNumberREST(apiClient, repo, options.CurrentPR, currentFields)
+			if err != nil {
+				return err
+			}
+			if !keepMergeable {
+				pr.Mergeable = ""
+			}
+			payload.CurrentPR = pr
+			if pr.State != "OPEN" {
+				if def, err := api.RepoDefaultBranch(apiClient, repo); err == nil {
+					payload.DefaultBranch = def
+				}
+			}
+			return nil
+		})
+	} else if options.HeadRef != "" {
+		g.Go(func() error {
+			headQuery := options.HeadRef
+			if !strings.Contains(headQuery, ":") {
+				headQuery = fmt.Sprintf("%s:%s", repo.RepoOwner(), headQuery)
+			}
+			prs, def, err := api.FetchPullRequestsForBranchREST(apiClient, repo, headQuery, nil)
+			if err != nil {
+				return err
+			}
+			payload.DefaultBranch = def
+			for i := range prs {
+				if prs[i].HeadLabel() == options.HeadRef {
+					pr, err := api.LookupPullRequestByNumberREST(apiClient, repo, prs[i].Number, currentFields)
+					if err != nil {
+						return err
+					}
+					if !keepMergeable {
+						pr.Mergeable = ""
+					}
+					payload.CurrentPR = pr
+					break
+				}
+			}
+			return nil
+		})
 	}
 
-	var resp response
-	if err := apiClient.GraphQL(repo.RepoHost(), query, variables, &resp); err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	var viewerCreated []api.PullRequest
-	for _, edge := range resp.ViewerCreated.Edges {
-		viewerCreated = append(viewerCreated, edge.Node)
-	}
+	return payload, nil
+}
 
-	var reviewRequested []api.PullRequest
-	for _, edge := range resp.ReviewRequested.Edges {
-		reviewRequested = append(reviewRequested, edge.Node)
+func clearMergeable(prs []api.PullRequest) {
+	for i := range prs {
+		prs[i].Mergeable = ""
 	}
-
-	var currentPR = resp.Repository.PullRequest
-	if currentPR == nil {
-		for _, edge := range resp.Repository.PullRequests.Edges {
-			if edge.Node.HeadLabel() == currentPRHeadRef {
-				currentPR = &edge.Node
-				break // Take the most recent PR for the current branch
-			}
-		}
-	}
-
-	payload := pullRequestsPayload{
-		ViewerCreated: api.PullRequestAndTotalCount{
-			PullRequests: viewerCreated,
-			TotalCount:   resp.ViewerCreated.TotalCount,
-		},
-		ReviewRequested: api.PullRequestAndTotalCount{
-			PullRequests: reviewRequested,
-			TotalCount:   resp.ReviewRequested.TotalCount,
-		},
-		CurrentPR:     currentPR,
-		DefaultBranch: resp.Repository.DefaultBranchRef.Name,
-	}
-
-	return &payload, nil
 }
 
 func getCurrentUsername(username string, hostname string, apiClient *api.Client) (string, error) {
@@ -195,29 +146,4 @@ func getCurrentUsername(username string, hostname string, apiClient *api.Client)
 		}
 	}
 	return username, nil
-}
-
-func pullRequestFragment(conflictStatus bool, statusCheckRollupWithCountByState bool) (string, error) {
-	fields := []string{
-		"number", "title", "state", "url", "isDraft", "isCrossRepository",
-		"headRefName", "headRepositoryOwner", "mergeStateStatus",
-		"requiresStrictStatusChecks", "autoMergeRequest",
-	}
-
-	if conflictStatus {
-		fields = append(fields, "mergeable")
-	}
-
-	if statusCheckRollupWithCountByState {
-		fields = append(fields, "statusCheckRollupWithCountByState")
-	} else {
-		fields = append(fields, "statusCheckRollup")
-	}
-
-	reviewFields := []string{"reviewDecision", "latestReviews"}
-	fragments := fmt.Sprintf(`
-	fragment pr on PullRequest {%s}
-	fragment prWithReviews on PullRequest {...pr,%s}
-	`, api.PullRequestGraphQL(fields), api.PullRequestGraphQL(reviewFields))
-	return fragments, nil
 }

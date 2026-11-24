@@ -110,6 +110,17 @@ func (pr *PullRequest) ReviewStatus() PullRequestReviewStatus {
 		status.Approved = true
 	case "REVIEW_REQUIRED":
 		status.ReviewRequired = true
+	default:
+		for _, review := range pr.LatestReviews.Nodes {
+			switch review.State {
+			case "CHANGES_REQUESTED":
+				status.ChangesRequested = true
+				status.Approved = false
+				return status
+			case "APPROVED":
+				status.Approved = true
+			}
+		}
 	}
 	return status
 }

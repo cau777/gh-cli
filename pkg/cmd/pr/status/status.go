@@ -80,6 +80,11 @@ func NewCmdStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobra.Co
 }
 
 func statusRun(opts *StatusOptions) error {
+	if opts.Exporter != nil {
+		if err := api.ValidateSupportedFields(opts.Exporter.Fields(), api.UnsupportedPRJSONFields); err != nil {
+			return err
+		}
+	}
 	ctx := context.Background()
 	httpClient, err := opts.HttpClient()
 	if err != nil {

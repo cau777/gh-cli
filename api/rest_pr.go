@@ -664,3 +664,246 @@ func LookupPullRequestByNumberREST(client *Client, repo ghrepo.Interface, number
 	}
 	return pr, nil
 }
+
+
+// UnsupportedPRJSONFields lists PullRequest JSON fields that cannot be populated from REST
+// and return ErrNotSupported when explicitly requested via --json.
+var UnsupportedPRJSONFields = map[string]string{
+	"closingIssuesReferences": "closingIssuesReferences is not supported with REST",
+	"potentialMergeCommit":    "potentialMergeCommit is not supported with REST",
+	"projectCards":            "projectCards is not supported with REST",
+	"projectItems":            "projectItems is not supported with REST",
+	"reviewDecision":          "reviewDecision is not supported with REST",
+}
+
+var singlePRDetailFields = map[string]bool{
+	"additions":           true,
+	"autoMergeRequest":    true,
+	"changedFiles":        true,
+	"comments":            true,
+	"commitsCount":        true,
+	"deletions":           true,
+	"maintainerCanModify": true,
+	"mergeStateStatus":    true,
+	"mergeable":           true,
+}
+
+var prHydrationFields = map[string]bool{
+	"reviews":           true,
+	"latestReviews":     true,
+	"comments":          true,
+	"files":             true,
+	"commits":           true,
+	"statusCheckRollup": true,
+	"reactionGroups":    true,
+}
+
+// NeedsSinglePRDetailFetch reports whether any requested field requires fetching
+// the individual pull request endpoint rather than a list/search summary.
+func NeedsSinglePRDetailFetch(fields []string) bool {
+	for _, f := range fields {
+		if singlePRDetailFields[f] {
+			return true
+		}
+	}
+	return false
+}
+
+func needsPRHydration(fields []string) bool {
+	for _, f := range fields {
+		if prHydrationFields[f] {
+			return true
+		}
+	}
+	return false
+}
+
+func needsSearchPRHydration(fields []string) bool {
+	for _, f := range fields {
+		switch f {
+		case "headRefName", "headRefOid", "headRepository", "headRepositoryOwner",
+			"baseRefName", "baseRefOid", "isCrossRepository", "mergedBy",
+			"mergeCommit", "reviewRequests":
+			return true
+		default:
+			if singlePRDetailFields[f] || prHydrationFields[f] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ListPullRequestsOptions configures REST pull request listing.
+type ListPullRequestsOptions struct {
+	State      string
+	BaseBranch string
+	HeadBranch string
+	Limit      int
+	Fields     []string
+}
+
+// ListPullRequestsREST lists pull requests for a repository via REST GET /repos/{owner}/{repo}/pulls.
+func ListPullRequestsREST(client *Client, repo ghrepo.Interface, opts ListPullRequestsOptions) (*PullRequestAndTotalCount, error) {
+	var restState string
+	switch opts.State {
+	case "open":
+		restState = "open"
+	case "closed", "merged":
+		restState = "closed"
+	case "all":
+		restState = "all"
+	default:
+		return nil, fmt.Errorf("invalid state: %s", opts.State)
+	}
+
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "pulls")
+	if err != nil {
+		return nil, err
+	}
+	perPage := min(opts.Limit, 100)
+	if opts.State == "merged" || opts.HeadBranch != "" {
+		perPage = 100
+	}
+	path.SetQuery("per_page", strconv.Itoa(perPage))
+	path.SetQuery("state", restState)
+	if opts.BaseBranch != "" {
+		path.SetQuery("base", opts.BaseBranch)
+	}
+	if opts.HeadBranch != "" {
+		headQuery := opts.HeadBranch
+		if !strings.Contains(headQuery, ":") {
+			headQuery = fmt.Sprintf("%s:%s", repo.RepoOwner(), headQuery)
+		}
+		path.SetQuery("head", headQuery)
+	}
+
+	res := &PullRequestAndTotalCount{}
+	seen := make(map[int]struct{})
+	nextPath := path.String()
+
+loop:
+	for nextPath != "" {
+		var page []restPullRequest
+		next, err := client.RESTWithNext(repo.RepoHost(), http.MethodGet, nextPath, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range page {
+			pr := page[i].toPullRequest(repo)
+			pr.Mergeable = "" // List endpoint does not include mergeability.
+			if opts.State == "merged" && pr.State != "MERGED" {
+				continue
+			}
+			if _, exists := seen[pr.Number]; exists && pr.Number > 0 {
+				continue
+			}
+			seen[pr.Number] = struct{}{}
+			res.PullRequests = append(res.PullRequests, *pr)
+			if len(res.PullRequests) == opts.Limit {
+				break loop
+			}
+		}
+		nextPath = next
+	}
+
+	res.TotalCount = len(res.PullRequests)
+	if err := hydratePRSlice(client, repo, res.PullRequests, opts.Fields, false); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+type restSearchPullsResponse struct {
+	TotalCount int `json:"total_count"`
+	Items      []struct {
+		restPullRequest
+		PullRequest *struct {
+			MergedAt *time.Time `json:"merged_at"`
+		} `json:"pull_request"`
+	} `json:"items"`
+}
+
+// SearchPullRequestsREST searches pull requests via REST GET /search/issues.
+func SearchPullRequestsREST(client *Client, repo ghrepo.Interface, query string, limit int, fields []string) (*PullRequestAndTotalCount, error) {
+	path, err := safeurl.JoinPath("search", "issues")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("q", query)
+	path.SetQuery("per_page", strconv.Itoa(min(limit, 100)))
+
+	res := &PullRequestAndTotalCount{SearchCapped: limit > 1000}
+	seen := make(map[int]struct{})
+	nextPath := path.String()
+
+loop:
+	for nextPath != "" {
+		var page restSearchPullsResponse
+		next, err := client.RESTWithNext(repo.RepoHost(), http.MethodGet, nextPath, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		res.TotalCount = page.TotalCount
+
+		for i := range page.Items {
+			item := &page.Items[i]
+			if item.PullRequest != nil && item.MergedAt == nil {
+				item.MergedAt = item.PullRequest.MergedAt
+			}
+			pr := item.toPullRequest(repo)
+			pr.Mergeable = "" // Search endpoint does not include mergeability.
+			if _, exists := seen[pr.Number]; exists && pr.Number > 0 {
+				continue
+			}
+			seen[pr.Number] = struct{}{}
+			res.PullRequests = append(res.PullRequests, *pr)
+			if len(res.PullRequests) == limit {
+				break loop
+			}
+		}
+		nextPath = next
+	}
+
+	if len(fields) > 0 && needsSearchPRHydration(fields) {
+		if err := hydratePRSlice(client, repo, res.PullRequests, fields, true); err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func hydratePRSlice(client *Client, repo ghrepo.Interface, prs []PullRequest, fields []string, forceSingleFetch bool) error {
+	if len(prs) == 0 {
+		return nil
+	}
+	fetchSingle := forceSingleFetch || NeedsSinglePRDetailFetch(fields)
+	hydrateSub := needsPRHydration(fields)
+	if !fetchSingle && !hydrateSub {
+		return nil
+	}
+
+	g, _ := errgroup.WithContext(context.Background())
+	g.SetLimit(8)
+	for i := range prs {
+		idx := i
+		if prs[idx].Number == 0 {
+			continue
+		}
+		g.Go(func() error {
+			if fetchSingle {
+				fullPR, err := FetchPullRequestREST(client, repo, prs[idx].Number)
+				if err != nil {
+					return err
+				}
+				prs[idx] = *fullPR
+			}
+			if hydrateSub {
+				return HydratePullRequestFields(client, repo, &prs[idx], fields)
+			}
+			return nil
+		})
+	}
+	return g.Wait()
+}

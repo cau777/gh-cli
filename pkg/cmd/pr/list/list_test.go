@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -14,14 +15,12 @@ import (
 	fd "github.com/cli/cli/v2/internal/featuredetection"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/run"
-	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/httpmock"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/cli/cli/v2/test"
 	"github.com/google/shlex"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func runCommand(rt http.RoundTripper, detector fd.Detector, isTTY bool, cli string) (*test.CmdOut, error) {
@@ -74,11 +73,44 @@ func initFakeHTTP() *httpmock.Registry {
 	return &httpmock.Registry{}
 }
 
+const restPRListJSON = `[
+	{
+		"number": 32,
+		"title": "New feature",
+		"state": "open",
+		"draft": true,
+		"created_at": "2022-08-24T20:01:12Z",
+		"html_url": "https://github.com/OWNER/REPO/pull/32",
+		"head": {"ref": "feature", "user": {"login": "OWNER"}},
+		"base": {"ref": "main", "repo": {"full_name": "OWNER/REPO"}}
+	},
+	{
+		"number": 29,
+		"title": "Fixed bad bug",
+		"state": "open",
+		"draft": false,
+		"created_at": "2022-07-20T19:01:12Z",
+		"html_url": "https://github.com/OWNER/REPO/pull/29",
+		"head": {"ref": "bug-fix", "user": {"login": "hubot"}, "repo": {"full_name": "hubot/REPO"}},
+		"base": {"ref": "main", "repo": {"full_name": "OWNER/REPO"}}
+	},
+	{
+		"number": 28,
+		"title": "Improve documentation",
+		"state": "closed",
+		"merged_at": "2020-01-26T19:01:12Z",
+		"created_at": "2020-01-26T19:01:12Z",
+		"html_url": "https://github.com/OWNER/REPO/pull/28",
+		"head": {"ref": "docs", "user": {"login": "OWNER"}},
+		"base": {"ref": "main", "repo": {"full_name": "OWNER/REPO"}}
+	}
+]`
+
 func TestPRList(t *testing.T) {
 	http := initFakeHTTP()
 	defer http.Verify(t)
 
-	http.Register(httpmock.GraphQL(`query PullRequestList\b`), httpmock.FileResponse("./fixtures/prList.json"))
+	http.Register(httpmock.REST("GET", "repos/OWNER/REPO/pulls"), httpmock.StringResponse(restPRListJSON))
 
 	output, err := runCommand(http, nil, true, "")
 	if err != nil {
@@ -101,7 +133,7 @@ func TestPRList_nontty(t *testing.T) {
 	http := initFakeHTTP()
 	defer http.Verify(t)
 
-	http.Register(httpmock.GraphQL(`query PullRequestList\b`), httpmock.FileResponse("./fixtures/prList.json"))
+	http.Register(httpmock.REST("GET", "repos/OWNER/REPO/pulls"), httpmock.StringResponse(restPRListJSON))
 
 	output, err := runCommand(http, nil, false, "")
 	if err != nil {
@@ -121,10 +153,11 @@ func TestPRList_filtering(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query PullRequestList\b`),
-		httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-			assert.Equal(t, []any{"OPEN", "CLOSED", "MERGED"}, params["state"].([]any))
-		}))
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/pulls", url.Values{
+			"per_page": {"30"},
+			"state":    {"all"},
+		}),
+		httpmock.StatusStringResponse(500, ""))
 
 	output, err := runCommand(http, nil, true, `-s all`)
 	assert.Error(t, err)
@@ -138,8 +171,11 @@ func TestPRList_filteringRemoveDuplicate(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query PullRequestList\b`),
-		httpmock.FileResponse("./fixtures/prListWithDuplicates.json"))
+		httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+		httpmock.StringResponse(`[
+			{"number": 32, "title": "New feature", "state": "open", "created_at": "2022-08-24T20:01:12Z", "head": {"ref": "feature", "user": {"login": "OWNER"}}},
+			{"number": 32, "title": "New feature", "state": "open", "created_at": "2022-08-24T20:01:12Z", "head": {"ref": "feature", "user": {"login": "OWNER"}}}
+		]`))
 
 	output, err := runCommand(http, nil, true, "")
 	if err != nil {
@@ -159,10 +195,11 @@ func TestPRList_filteringClosed(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query PullRequestList\b`),
-		httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-			assert.Equal(t, []any{"CLOSED", "MERGED"}, params["state"].([]any))
-		}))
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/pulls", url.Values{
+			"per_page": {"30"},
+			"state":    {"closed"},
+		}),
+		httpmock.StatusStringResponse(500, ""))
 
 	_, err := runCommand(http, nil, true, `-s closed`)
 	assert.Error(t, err)
@@ -173,10 +210,12 @@ func TestPRList_filteringHeadBranch(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query PullRequestList\b`),
-		httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-			assert.Equal(t, any("bug-fix"), params["headBranch"])
-		}))
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/pulls", url.Values{
+			"per_page": {"100"},
+			"state":    {"open"},
+			"head":     {"OWNER:bug-fix"},
+		}),
+		httpmock.StatusStringResponse(500, ""))
 
 	_, err := runCommand(http, nil, true, `-H bug-fix`)
 	assert.Error(t, err)
@@ -187,13 +226,12 @@ func TestPRList_filteringAssignee(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query PullRequestSearch\b`),
-		httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-			assert.Equal(t, `assignee:hubot base:develop is:merged label:"needs tests" repo:OWNER/REPO type:pr`, params["q"].(string))
-		}))
+		httpmock.QueryMatcher("GET", "search/issues", url.Values{
+			"per_page": {"30"},
+			"q":        {`assignee:hubot base:develop is:merged label:"needs tests" repo:OWNER/REPO type:pr`},
+		}),
+		httpmock.StatusStringResponse(500, ""))
 
-	// TODO advancedIssueSearchCleanup
-	// No need for feature detection once GHES 3.17 support ends.
 	_, err := runCommand(http, fd.AdvancedIssueSearchSupportedAsOptIn(), true, `-s merged -l "needs tests" -a hubot -B develop`)
 	assert.Error(t, err)
 }
@@ -222,13 +260,12 @@ func TestPRList_filteringDraft(t *testing.T) {
 			defer http.Verify(t)
 
 			http.Register(
-				httpmock.GraphQL(`query PullRequestSearch\b`),
-				httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-					assert.Equal(t, test.expectedQuery, params["q"].(string))
-				}))
+				httpmock.QueryMatcher("GET", "search/issues", url.Values{
+					"per_page": {"30"},
+					"q":        {test.expectedQuery},
+				}),
+				httpmock.StatusStringResponse(500, ""))
 
-			// TODO advancedIssueSearchCleanup
-			// No need for feature detection once GHES 3.17 support ends.
 			_, err := runCommand(http, fd.AdvancedIssueSearchSupportedAsOptIn(), true, test.cli)
 			assert.Error(t, err)
 		})
@@ -269,13 +306,12 @@ func TestPRList_filteringAuthor(t *testing.T) {
 			defer http.Verify(t)
 
 			http.Register(
-				httpmock.GraphQL(`query PullRequestSearch\b`),
-				httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-					assert.Equal(t, test.expectedQuery, params["q"].(string))
-				}))
+				httpmock.QueryMatcher("GET", "search/issues", url.Values{
+					"per_page": {"30"},
+					"q":        {test.expectedQuery},
+				}),
+				httpmock.StatusStringResponse(500, ""))
 
-			// TODO advancedIssueSearchCleanup
-			// No need for feature detection once GHES 3.17 support ends.
 			_, err := runCommand(http, fd.AdvancedIssueSearchSupportedAsOptIn(), true, test.cli)
 			assert.Error(t, err)
 		})
@@ -332,150 +368,12 @@ func TestPRList_web(t *testing.T) {
 	}
 }
 
-func TestPRList_withProjectItems(t *testing.T) {
-	reg := &httpmock.Registry{}
-	defer reg.Verify(t)
-
-	reg.Register(
-		httpmock.GraphQL(`query PullRequestList\b`),
-		httpmock.GraphQLQuery(`{
-			"data": {
-			  "repository": {
-				"pullRequests": {
-				  "totalCount": 1,
-				  "nodes": [
-					{
-					  "projectItems": {
-						"nodes": [
-						  {
-							"id": "PVTI_lAHOAA3WC84AW6WNzgJ8rnQ",
-							"project": {
-							  "id": "PVT_kwHOAA3WC84AW6WN",
-							  "title": "Test Public Project"
-							},
-							"status": {
-							  "optionId": "47fc9ee4",
-							  "name": "In Progress"
-							}
-						  }
-						],
-						"totalCount": 1
-					  }
-					}
-				  ]
-				}
-			  }
-			}
-		  }`, func(_ string, params map[string]any) {
-			require.Equal(t, map[string]any{
-				"owner": "OWNER",
-				"repo":  "REPO",
-				"limit": float64(30),
-				"state": []any{"OPEN"},
-			}, params)
-		}))
-
-	client := &http.Client{Transport: reg}
-	prsAndTotalCount, err := listPullRequests(
-		client,
-		nil,
-		ghrepo.New("OWNER", "REPO"),
-		prShared.FilterOptions{
-			Entity: "pr",
-			State:  "open",
-		},
-		30,
-	)
-
-	require.NoError(t, err)
-	require.Len(t, prsAndTotalCount.PullRequests, 1)
-	require.Len(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes, 1)
-
-	require.Equal(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes[0].ID, "PVTI_lAHOAA3WC84AW6WNzgJ8rnQ")
-
-	expectedProject := api.ProjectV2ItemProject{
-		ID:    "PVT_kwHOAA3WC84AW6WN",
-		Title: "Test Public Project",
+func TestPRList_unsupportedJSONFields(t *testing.T) {
+	for _, field := range []string{"projectItems", "projectCards", "closingIssuesReferences", "reviewDecision"} {
+		t.Run(field, func(t *testing.T) {
+			http := initFakeHTTP()
+			_, err := runCommand(http, nil, true, "--json "+field)
+			assert.ErrorIs(t, err, api.ErrNotSupported)
+		})
 	}
-	require.Equal(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes[0].Project, expectedProject)
-
-	expectedStatus := api.ProjectV2ItemStatus{
-		OptionID: "47fc9ee4",
-		Name:     "In Progress",
-	}
-	require.Equal(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes[0].Status, expectedStatus)
-}
-
-func TestPRList_Search_withProjectItems(t *testing.T) {
-	reg := &httpmock.Registry{}
-	defer reg.Verify(t)
-
-	reg.Register(
-		httpmock.GraphQL(`query PullRequestSearch\b`),
-		httpmock.GraphQLQuery(`{
-			"data": {
-			  "search": {
-				"issueCount": 1,
-				"nodes": [
-				  {
-					"projectItems": {
-					  "nodes": [
-						{
-						  "id": "PVTI_lAHOAA3WC84AW6WNzgJ8rl0",
-						  "project": {
-							"id": "PVT_kwHOAA3WC84AW6WN",
-							"title": "Test Public Project"
-						  },
-						  "status": {
-							"optionId": "47fc9ee4",
-							"name": "In Progress"
-						  }
-						}
-					  ],
-					  "totalCount": 1
-					}
-				  }
-				]
-			  }
-			}
-		  }`, func(_ string, params map[string]any) {
-			require.Equal(t, map[string]any{
-				"limit": float64(30),
-				"q":     "( just used to force the search API branch ) repo:OWNER/REPO state:open type:pr",
-				"type":  "ISSUE_ADVANCED",
-			}, params)
-		}))
-
-	client := &http.Client{Transport: reg}
-	prsAndTotalCount, err := listPullRequests(
-		client,
-		// TODO advancedIssueSearchCleanup
-		// No need for feature detection once GHES 3.17 support ends.
-		fd.AdvancedIssueSearchSupportedAsOptIn(),
-		ghrepo.New("OWNER", "REPO"),
-		prShared.FilterOptions{
-			Entity: "pr",
-			State:  "open",
-			Search: "just used to force the search API branch",
-		},
-		30,
-	)
-
-	require.NoError(t, err)
-	require.Len(t, prsAndTotalCount.PullRequests, 1)
-	require.Len(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes, 1)
-
-	require.Equal(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes[0].ID, "PVTI_lAHOAA3WC84AW6WNzgJ8rl0")
-
-	expectedProject := api.ProjectV2ItemProject{
-		ID:    "PVT_kwHOAA3WC84AW6WN",
-		Title: "Test Public Project",
-	}
-	require.Equal(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes[0].Project, expectedProject)
-
-	expectedStatus := api.ProjectV2ItemStatus{
-		OptionID: "47fc9ee4",
-		Name:     "In Progress",
-	}
-	require.Equal(t, prsAndTotalCount.PullRequests[0].ProjectItems.Nodes[0].Status, expectedStatus)
 }

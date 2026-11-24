@@ -176,6 +176,9 @@ func listRun(opts *ListOptions) error {
 		Fields:     defaultFields,
 	}
 	if opts.Exporter != nil {
+		if err := api.ValidateSupportedFields(opts.Exporter.Fields(), api.UnsupportedPRJSONFields); err != nil {
+			return err
+		}
 		filters.Fields = opts.Exporter.Fields()
 	}
 	if opts.WebMode {

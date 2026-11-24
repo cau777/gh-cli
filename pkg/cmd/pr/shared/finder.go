@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -296,27 +295,6 @@ func findByNumber(httpClient *http.Client, repo ghrepo.Interface, number int, fi
 	return api.LookupPullRequestByNumberREST(client, repo, number, fields)
 }
 
-var singlePRDetailFields = []string{
-	"additions",
-	"autoMergeRequest",
-	"changedFiles",
-	"comments",
-	"commitsCount",
-	"deletions",
-	"maintainerCanModify",
-	"mergeStateStatus",
-	"mergeable",
-}
-
-func needsSinglePRDetailFetch(fields []string) bool {
-	for _, f := range fields {
-		if slices.Contains(singlePRDetailFields, f) {
-			return true
-		}
-	}
-	return false
-}
-
 func findForRefs(httpClient *http.Client, prRefs PRFindRefs, stateFilters, fields []string) (*api.PullRequest, error) {
 	headQuery := prRefs.QualifiedHeadRef()
 	if !strings.Contains(headQuery, ":") {
@@ -339,7 +317,7 @@ func findForRefs(httpClient *http.Client, prRefs PRFindRefs, stateFilters, field
 		// https://github.com/cli/cli/issues/4263
 		isNotClosedOrMergedWhenHeadIsDefault := pr.State == "OPEN" || defaultBranch != prRefs.QualifiedHeadRef()
 		if prRefs.Matches(pr.BaseRefName, pr.HeadLabel()) && isNotClosedOrMergedWhenHeadIsDefault {
-			if needsSinglePRDetailFetch(fields) {
+			if api.NeedsSinglePRDetailFetch(fields) {
 				fullPR, err := api.FetchPullRequestREST(client, prRefs.BaseRepo(), pr.Number)
 				if err != nil {
 					return nil, err

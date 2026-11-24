@@ -114,6 +114,9 @@ func viewRun(opts *ViewOptions) error {
 	if opts.BrowserMode {
 		findOptions.Fields = []string{"url"}
 	} else if opts.Exporter != nil {
+		if err := api.ValidateSupportedFields(opts.Exporter.Fields(), api.UnsupportedPRJSONFields); err != nil {
+			return err
+		}
 		findOptions.Fields = opts.Exporter.Fields()
 		// The agent hint is skipped for merged or closed pull requests, which needs the state even when it was not
 		// requested. The exporter still writes only the requested fields.

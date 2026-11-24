@@ -982,3 +982,13 @@ func TestPRView_nontty_Comments(t *testing.T) {
 		})
 	}
 }
+
+func TestPRView_unsupportedJSONFields(t *testing.T) {
+	for _, field := range []string{"projectItems", "projectCards", "closingIssuesReferences", "reviewDecision"} {
+		t.Run(field, func(t *testing.T) {
+			http := &httpmock.Registry{}
+			_, err := runCommand(http, "master", false, "12 --json "+field)
+			assert.ErrorIs(t, err, api.ErrNotSupported)
+		})
+	}
+}

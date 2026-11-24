@@ -9,6 +9,8 @@ when running in REST-only mode.
 
 - **`gh pr checks --required`**: GitHub REST check-runs (`/commits/{ref}/check-runs`) and commit status (`/commits/{ref}/status`) endpoints do not indicate which checks are required by branch protection rulesets. Passing `--required` returns `not all features are supported`.
 - **PR Finder (`pkg/cmd/pr/shared/finder.go`)**: `projectItems`, `projectCards`, `closingIssuesReferences`, `isInMergeQueue`, and `isMergeQueueEnabled` are not available on REST PR endpoints and are left empty on default lookups. Explicit `--json` validation is handled at command entry points.
+- **`gh pr list`, `gh pr view`, `gh pr status` `--json` fields**: Passing any of `projectItems`, `projectCards`, `closingIssuesReferences`, `reviewDecision`, or `potentialMergeCommit` with `--json` returns `not all features are supported`. Default (non-`--json`) views omit those fields gracefully.
+- **`gh pr status` branch protection review/strictness indicators**: REST does not expose `reviewDecision` (`- Review required`) or `requiresStrictStatusChecks` (`✓ Up to date` / `- Not up to date`) / `requiredApprovingReviewCount` (`N/M Approved`) without admin branch-protection permissions. `Changes requested` and `N Approved` are derived from `LatestReviews` instead.
 
 ## Issues
 

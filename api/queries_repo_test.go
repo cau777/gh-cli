@@ -2,10 +2,8 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/MakeNowJust/heredoc"
@@ -21,12 +19,12 @@ func TestGitHubRepo_notFound(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`{ "data": { "repository": null } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 
 	client := newTestClient(httpReg)
 	repo, err := GitHubRepo(client, ghrepo.New("OWNER", "REPO"))
-	require.EqualError(t, err, "GraphQL: Could not resolve to a Repository with the name 'OWNER/REPO'.")
+	require.EqualError(t, err, "HTTP 404 (https://api.github.com/repos/OWNER/REPO)")
 	assert.Nil(t, repo)
 }
 
@@ -35,42 +33,45 @@ func TestGitHubRepo_success(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"id": "REPOID",
-			"databaseId": 1234,
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"id": 1234,
 			"name": "REPO",
+			"full_name": "OWNER/REPO",
 			"owner": {"login": "OWNER"},
-			"sshUrl": "org-1234@github.com:OWNER/REPO.git",
-			"hasIssuesEnabled": true,
+			"ssh_url": "org-1234@github.com:OWNER/REPO.git",
+			"has_issues": true,
 			"description": "a cool repo",
-			"hasWikiEnabled": true,
-			"viewerPermission": "ADMIN",
-			"defaultBranchRef": {"name": "main"},
+			"has_wiki": true,
+			"permissions": {"admin": true, "push": true, "pull": true},
+			"default_branch": "main",
 			"parent": null,
-			"mergeCommitAllowed": true,
-			"rebaseMergeAllowed": true,
-			"squashMergeAllowed": false
-		} } }`))
+			"allow_merge_commit": true,
+			"allow_rebase_merge": true,
+			"allow_squash_merge": false
+		}`))
 
 	client := newTestClient(httpReg)
 	repo, err := GitHubRepo(client, ghrepo.New("OWNER", "REPO"))
 	require.NoError(t, err)
 	assert.Equal(t, &Repository{
-		ID:                 "REPOID",
-		DatabaseID:         1234,
-		Name:               "REPO",
-		Owner:              RepositoryOwner{Login: "OWNER"},
-		SSHURL:             "org-1234@github.com:OWNER/REPO.git",
-		HasIssuesEnabled:   true,
-		Description:        "a cool repo",
-		HasWikiEnabled:     true,
-		ViewerPermission:   "ADMIN",
-		DefaultBranchRef:   BranchRef{Name: "main"},
-		MergeCommitAllowed: true,
-		RebaseMergeAllowed: true,
-		hostname:           "github.com",
+		ID:                  "REPOID",
+		DatabaseID:          1234,
+		Name:                "REPO",
+		NameWithOwner:       "OWNER/REPO",
+		Owner:               RepositoryOwner{Login: "OWNER"},
+		SSHURL:              "org-1234@github.com:OWNER/REPO.git",
+		HasIssuesEnabled:    true,
+		Description:         "a cool repo",
+		HasWikiEnabled:      true,
+		ViewerCanAdminister: true,
+		ViewerPermission:    "ADMIN",
+		Visibility:          "PUBLIC",
+		DefaultBranchRef:    BranchRef{Name: "main"},
+		MergeCommitAllowed:  true,
+		RebaseMergeAllowed:  true,
+		hostname:            "github.com",
 	}, repo)
 	assert.True(t, repo.ViewerCanPush())
 	assert.True(t, repo.ViewerCanTriage())
@@ -81,33 +82,34 @@ func TestGitHubRepo_withParent(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"id": "REPOID",
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
 			"name": "REPO",
+			"full_name": "OWNER/REPO",
 			"owner": {"login": "OWNER"},
-			"sshUrl": "git@github.com:OWNER/REPO.git",
-			"hasIssuesEnabled": true,
+			"ssh_url": "git@github.com:OWNER/REPO.git",
+			"has_issues": true,
 			"description": "",
-			"hasWikiEnabled": false,
-			"viewerPermission": "READ",
-			"defaultBranchRef": {"name": "main"},
+			"has_wiki": false,
+			"permissions": {"pull": true},
+			"default_branch": "main",
 			"parent": {
-				"id": "PARENTID",
+				"node_id": "PARENTID",
 				"name": "PARENT-REPO",
+				"full_name": "PARENT-OWNER/PARENT-REPO",
 				"owner": {"login": "PARENT-OWNER"},
-				"sshUrl": "org-5678@github.com:PARENT-OWNER/PARENT-REPO.git",
-				"hasIssuesEnabled": true,
+				"ssh_url": "org-5678@github.com:PARENT-OWNER/PARENT-REPO.git",
+				"has_issues": true,
 				"description": "parent repo",
-				"hasWikiEnabled": true,
-				"viewerPermission": "READ",
-				"defaultBranchRef": {"name": "develop"}
+				"has_wiki": true,
+				"permissions": {"pull": true},
+				"default_branch": "develop"
 			},
-			"mergeCommitAllowed": false,
-			"rebaseMergeAllowed": false,
-			"squashMergeAllowed": true
-		} } }`))
+			"allow_merge_commit": false,
+			"allow_rebase_merge": false,
+			"allow_squash_merge": true
+		}`))
 
 	client := newTestClient(httpReg)
 	repo, err := GitHubRepo(client, ghrepo.New("OWNER", "REPO"))
@@ -115,22 +117,26 @@ func TestGitHubRepo_withParent(t *testing.T) {
 	wantParent := &Repository{
 		ID:               "PARENTID",
 		Name:             "PARENT-REPO",
+		NameWithOwner:    "PARENT-OWNER/PARENT-REPO",
 		Owner:            RepositoryOwner{Login: "PARENT-OWNER"},
 		SSHURL:           "org-5678@github.com:PARENT-OWNER/PARENT-REPO.git",
 		HasIssuesEnabled: true,
 		Description:      "parent repo",
 		HasWikiEnabled:   true,
 		ViewerPermission: "READ",
+		Visibility:       "PUBLIC",
 		DefaultBranchRef: BranchRef{Name: "develop"},
 		hostname:         "github.com",
 	}
 	assert.Equal(t, &Repository{
 		ID:                 "REPOID",
 		Name:               "REPO",
+		NameWithOwner:      "OWNER/REPO",
 		Owner:              RepositoryOwner{Login: "OWNER"},
 		SSHURL:             "git@github.com:OWNER/REPO.git",
 		HasIssuesEnabled:   true,
 		ViewerPermission:   "READ",
+		Visibility:         "PUBLIC",
 		DefaultBranchRef:   BranchRef{Name: "main"},
 		Parent:             wantParent,
 		SquashMergeAllowed: true,
@@ -140,65 +146,31 @@ func TestGitHubRepo_withParent(t *testing.T) {
 	assert.False(t, repo.ViewerCanTriage())
 }
 
-// TestBaseRepoQuerySelections guards fields that must be explicitly requested.
-// A field left out of a query is silently zero rather than an error, so the
-// selection is asserted against the request instead of the response.
-func TestBaseRepoQuerySelections(t *testing.T) {
-	tests := []struct {
-		name    string
-		matcher httpmock.Matcher
-		body    string
-		fields  []string
-		call    func(*Client) error
-	}{
-		{
-			name:    "GitHubRepo",
-			matcher: httpmock.GraphQL(`query RepositoryInfo\b`),
-			body:    `{ "data": { "repository": { "id": "REPOID", "databaseId": 1234 } } }`,
-			fields:  []string{"databaseId", "sshUrl"},
-			call: func(client *Client) error {
-				_, err := GitHubRepo(client, ghrepo.New("OWNER", "REPO"))
-				return err
-			},
-		},
-		{
-			name:    "RepoNetwork",
-			matcher: httpmock.GraphQL(`query RepositoryNetwork\b`),
-			body:    `{ "data": { "repo_000": { "id": "REPOID", "databaseId": 1234 } } }`,
-			fields:  []string{"databaseId"},
-			call: func(client *Client) error {
-				_, err := RepoNetwork(client, []ghrepo.Interface{ghrepo.New("OWNER", "REPO")})
-				return err
-			},
-		},
-		{
-			name:    "IssueRepoInfo",
-			matcher: httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-			body:    `{ "data": { "repository": { "id": "REPOID", "databaseId": 1234 } } }`,
-			fields:  []string{"databaseId"},
-			call: func(client *Client) error {
-				_, err := IssueRepoInfo(client, ghrepo.New("OWNER", "REPO"))
-				return err
-			},
-		},
-	}
+func TestBaseRepoRESTLookups(t *testing.T) {
+	t.Run("GitHubRepo", func(t *testing.T) {
+		httpReg := &httpmock.Registry{}
+		defer httpReg.Verify(t)
+		httpReg.Register(
+			httpmock.REST("GET", "repos/OWNER/REPO"),
+			httpmock.StringResponse(`{"node_id":"REPOID","id":1234,"ssh_url":"git@github.com:OWNER/REPO.git"}`),
+		)
+		repo, err := GitHubRepo(newTestClient(httpReg), ghrepo.New("OWNER", "REPO"))
+		require.NoError(t, err)
+		assert.Equal(t, int64(1234), repo.DatabaseID)
+		assert.Equal(t, "git@github.com:OWNER/REPO.git", repo.SSHURL)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			httpReg := &httpmock.Registry{}
-			defer httpReg.Verify(t)
-
-			var query string
-			httpReg.Register(tt.matcher, httpmock.GraphQLQuery(tt.body, func(q string, _ map[string]any) {
-				query = q
-			}))
-
-			require.NoError(t, tt.call(newTestClient(httpReg)))
-			for _, field := range tt.fields {
-				assert.Contains(t, query, field)
-			}
-		})
-	}
+	t.Run("IssueRepoInfo", func(t *testing.T) {
+		httpReg := &httpmock.Registry{}
+		defer httpReg.Verify(t)
+		httpReg.Register(
+			httpmock.REST("GET", "repos/OWNER/REPO"),
+			httpmock.StringResponse(`{"node_id":"REPOID","id":1234}`),
+		)
+		repo, err := IssueRepoInfo(newTestClient(httpReg), ghrepo.New("OWNER", "REPO"))
+		require.NoError(t, err)
+		assert.Equal(t, int64(1234), repo.DatabaseID)
+	})
 }
 
 func TestRepoNetworkUnmarshalsDatabaseID(t *testing.T) {
@@ -206,22 +178,22 @@ func TestRepoNetworkUnmarshalsDatabaseID(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query RepositoryNetwork\b`),
-		httpmock.StringResponse(`
-		{ "data": {
-			"viewer": {"login": "OWNER"},
-			"repo_000": {
-				"id": "REPOID",
-				"databaseId": 1234,
-				"name": "REPO",
-				"owner": {"login": "OWNER"},
-				"viewerPermission": "WRITE",
-				"defaultBranchRef": {"name": "main"}
-			}
-		} }`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"OWNER"}`))
+	httpReg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"id": 1234,
+			"name": "REPO",
+			"owner": {"login": "OWNER"},
+			"permissions": {"push": true},
+			"default_branch": "main"
+		}`))
 
 	result, err := RepoNetwork(newTestClient(httpReg), []ghrepo.Interface{ghrepo.New("OWNER", "REPO")})
 	require.NoError(t, err)
+	assert.Equal(t, "OWNER", result.ViewerLogin)
 	require.Len(t, result.Repositories, 1)
 	assert.Equal(t, int64(1234), result.Repositories[0].DatabaseID)
 }
@@ -231,12 +203,12 @@ func TestIssueRepoInfo_notFound(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`{ "data": { "repository": null } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 
 	client := newTestClient(httpReg)
 	repo, err := IssueRepoInfo(client, ghrepo.New("OWNER", "REPO"))
-	require.EqualError(t, err, "GraphQL: Could not resolve to a Repository with the name 'OWNER/REPO'.")
+	require.EqualError(t, err, "HTTP 404 (https://api.github.com/repos/OWNER/REPO)")
 	assert.Nil(t, repo)
 }
 
@@ -245,15 +217,14 @@ func TestIssueRepoInfo_success(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"id": "REPOID",
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
 			"name": "REPO",
 			"owner": {"login": "OWNER"},
-			"hasIssuesEnabled": true,
-			"viewerPermission": "WRITE"
-		} } }`))
+			"has_issues": true,
+			"permissions": {"push": true}
+		}`))
 
 	client := newTestClient(httpReg)
 	repo, err := IssueRepoInfo(client, ghrepo.New("OWNER", "REPO"))
@@ -264,6 +235,7 @@ func TestIssueRepoInfo_success(t *testing.T) {
 		Owner:            RepositoryOwner{Login: "OWNER"},
 		HasIssuesEnabled: true,
 		ViewerPermission: "WRITE",
+		Visibility:       "PUBLIC",
 		hostname:         "github.com",
 	}, repo)
 	assert.True(t, repo.ViewerCanTriage())
@@ -274,15 +246,14 @@ func TestIssueRepoInfo_issuesDisabled(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"id": "REPOID",
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
 			"name": "REPO",
 			"owner": {"login": "OWNER"},
-			"hasIssuesEnabled": false,
-			"viewerPermission": "READ"
-		} } }`))
+			"has_issues": false,
+			"permissions": {"pull": true}
+		}`))
 
 	client := newTestClient(httpReg)
 	repo, err := IssueRepoInfo(client, ghrepo.New("OWNER", "REPO"))
@@ -292,6 +263,7 @@ func TestIssueRepoInfo_issuesDisabled(t *testing.T) {
 		Name:             "REPO",
 		Owner:            RepositoryOwner{Login: "OWNER"},
 		ViewerPermission: "READ",
+		Visibility:       "PUBLIC",
 		hostname:         "github.com",
 	}, repo)
 	assert.False(t, repo.ViewerCanTriage())
@@ -313,50 +285,30 @@ func Test_RepoMetadata(t *testing.T) {
 	}
 
 	http.Register(
-		httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "assignableUsers": {
-			"nodes": [
-				{ "login": "hubot", "id": "HUBOTID" },
-				{ "login": "MonaLisa", "id": "MONAID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+		httpmock.StringResponse(`[
+			{ "login": "hubot", "node_id": "HUBOTID" },
+			{ "login": "MonaLisa", "node_id": "MONAID" }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query RepositoryLabelList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "labels": {
-			"nodes": [
-				{ "name": "feature", "id": "FEATUREID" },
-				{ "name": "TODO", "id": "TODOID" },
-				{ "name": "bug", "id": "BUGID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+		httpmock.StringResponse(`[
+			{ "name": "feature", "node_id": "FEATUREID" },
+			{ "name": "TODO", "node_id": "TODOID" },
+			{ "name": "bug", "node_id": "BUGID" }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "milestones": {
-			"nodes": [
-				{ "title": "GA", "id": "GAID" },
-				{ "title": "Big One.oh", "id": "BIGONEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+		httpmock.StringResponse(`[
+			{ "title": "GA", "node_id": "GAID" },
+			{ "title": "Big One.oh", "node_id": "BIGONEID" }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query RepositoryProjectList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [
-				{ "name": "Cleanup", "id": "CLEANUPID" },
-				{ "name": "Roadmap", "id": "ROADMAPID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Cleanup", "node_id": "CLEANUPID" },
+			{ "name": "Roadmap", "node_id": "ROADMAPID" }
+		]`))
 	http.Register(
 		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 		httpmock.StringResponse(`
@@ -369,15 +321,10 @@ func Test_RepoMetadata(t *testing.T) {
 		} } } }
 		`))
 	http.Register(
-		httpmock.GraphQL(`query OrganizationProjectList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "organization": { "projects": {
-			"nodes": [
-				{ "name": "Triage", "id": "TRIAGEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "orgs/OWNER/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Triage", "node_id": "TRIAGEID" }
+		]`))
 	http.Register(
 		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
 		httpmock.StringResponse(`
@@ -399,21 +346,14 @@ func Test_RepoMetadata(t *testing.T) {
 		} } } }
 		`))
 	http.Register(
-		httpmock.GraphQL(`query OrganizationTeamList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "organization": { "teams": {
-			"nodes": [
-				{ "slug": "owners", "id": "OWNERSID" },
-				{ "slug": "Core", "id": "COREID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "orgs/OWNER/teams"),
+		httpmock.StringResponse(`[
+			{ "slug": "owners", "node_id": "OWNERSID" },
+			{ "slug": "Core", "node_id": "COREID" }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`
-		  { "data": { "viewer": { "login": "monalisa" } } }
-		`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"monalisa"}`))
 
 	result, err := RepoMetadata(client, repo, input)
 	if err != nil {
@@ -486,26 +426,19 @@ func Test_RepoMetadata_TeamsAreConditionallyFetched(t *testing.T) {
 	}
 
 	http.Register(
-		httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "assignableUsers": {
-			"nodes": [
-				{ "login": "hubot", "id": "HUBOTID" },
-				{ "login": "MonaLisa", "id": "MONAID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+		httpmock.StringResponse(`[
+			{ "login": "hubot", "node_id": "HUBOTID" },
+			{ "login": "MonaLisa", "node_id": "MONAID" }
+		]`))
 
 	http.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`
-		  { "data": { "viewer": { "login": "monalisa" } } }
-		`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"monalisa"}`))
 
 	http.Exclude(
 		t,
-		httpmock.GraphQL(`query OrganizationTeamList\b`),
+		httpmock.REST("GET", "orgs/OWNER/teams"),
 	)
 
 	_, err := RepoMetadata(client, repo, input)
@@ -520,26 +453,16 @@ func Test_ProjectNamesToPaths(t *testing.T) {
 		repo, _ := ghrepo.FromFullName("OWNER/REPO")
 
 		http.Register(
-			httpmock.GraphQL(`query RepositoryProjectList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [
-				{ "name": "Cleanup", "id": "CLEANUPID", "resourcePath": "/OWNER/REPO/projects/1" },
-				{ "name": "Roadmap", "id": "ROADMAPID", "resourcePath": "/OWNER/REPO/projects/2" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+			httpmock.StringResponse(`[
+				{ "name": "Cleanup", "node_id": "CLEANUPID", "html_url": "https://github.com/OWNER/REPO/projects/1" },
+				{ "name": "Roadmap", "node_id": "ROADMAPID", "html_url": "https://github.com/OWNER/REPO/projects/2" }
+			]`))
 		http.Register(
-			httpmock.GraphQL(`query OrganizationProjectList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projects": {
-			"nodes": [
-				{ "name": "Triage", "id": "TRIAGEID", "resourcePath": "/orgs/ORG/projects/1"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "orgs/OWNER/projects"),
+			httpmock.StringResponse(`[
+				{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
+			]`))
 		http.Register(
 			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 			httpmock.StringResponse(`
@@ -591,11 +514,11 @@ func Test_ProjectNamesToPaths(t *testing.T) {
 
 		http.Exclude(
 			t,
-			httpmock.GraphQL(`query RepositoryProjectList\b`),
+			httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 		)
 		http.Exclude(
 			t,
-			httpmock.GraphQL(`query OrganizationProjectList\b`),
+			httpmock.REST("GET", "orgs/OWNER/projects"),
 		)
 
 		http.Register(
@@ -758,15 +681,15 @@ func Test_RepoMilestones(t *testing.T) {
 	}{
 		{
 			state: "open",
-			want:  `"states":["OPEN"]`,
+			want:  "open",
 		},
 		{
 			state: "closed",
-			want:  `"states":["CLOSED"]`,
+			want:  "closed",
 		},
 		{
 			state: "all",
-			want:  `"states":["OPEN","CLOSED"]`,
+			want:  "all",
 		},
 		{
 			state:   "invalid state",
@@ -774,16 +697,11 @@ func Test_RepoMilestones(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		var query string
+		var gotState string
 		reg := &httpmock.Registry{}
-		reg.Register(httpmock.MatchAny, func(req *http.Request) (*http.Response, error) {
-			buf := new(strings.Builder)
-			_, err := io.Copy(buf, req.Body)
-			if err != nil {
-				return nil, err
-			}
-			query = buf.String()
-			return httpmock.StringResponse("{}")(req)
+		reg.Register(httpmock.REST("GET", "repos/OWNER/REPO/milestones"), func(req *http.Request) (*http.Response, error) {
+			gotState = req.URL.Query().Get("state")
+			return httpmock.StringResponse("[]")(req)
 		})
 		client := newTestClient(reg)
 
@@ -792,8 +710,8 @@ func Test_RepoMilestones(t *testing.T) {
 			t.Errorf("RepoMilestones() error = %v, wantErr %v", err, tt.wantErr)
 			return
 		}
-		if !strings.Contains(query, tt.want) {
-			t.Errorf("query does not contain %v", tt.want)
+		if gotState != tt.want {
+			t.Errorf("query state = %q, want %q", gotState, tt.want)
 		}
 	}
 }

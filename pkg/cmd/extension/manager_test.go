@@ -1397,8 +1397,8 @@ func TestManager_Create_go_binary(t *testing.T) {
 	reg := httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{"login":"jillv"}}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"jillv"}`))
 
 	ios, _, stdout, stderr := iostreams.Test()
 

@@ -643,8 +643,8 @@ func Test_loginRun_nontty(t *testing.T) {
 					httpmock.WithHost(httpmock.REST("POST", "login/oauth/access_token"), tt.opts.Hostname),
 					httpmock.JSONResponse(map[string]string{"access_token": "xyz456", "token_type": "bearer"}))
 				reg.Register(
-					httpmock.WithHost(httpmock.GraphQL("query"), tt.opts.Hostname),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.WithHost(httpmock.REST("GET", "api/v3/user"), tt.opts.Hostname),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			}
 
 			for k, v := range tt.env {

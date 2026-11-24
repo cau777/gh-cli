@@ -1429,13 +1429,12 @@ func TestPRMergeTTY(t *testing.T) {
 	)
 
 	http.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"mergeCommitAllowed": true,
-			"rebaseMergeAllowed": true,
-			"squashMergeAllowed": true
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"allow_merge_commit": true,
+			"allow_rebase_merge": true,
+			"allow_squash_merge": true
+		}`))
 
 	http.Register(
 		httpmock.GraphQL(`mutation PullRequestMerge\b`),
@@ -1496,16 +1495,12 @@ func TestPRMergeTTY_withDeleteBranch(t *testing.T) {
 	)
 
 	http.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"mergeCommitAllowed": true,
-			"rebaseMergeAllowed": true,
-			"squashMergeAllowed": true,
-			"mergeQueue": {
-				"mergeMethod": ""
-			}
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"allow_merge_commit": true,
+			"allow_rebase_merge": true,
+			"allow_squash_merge": true
+		}`))
 	http.Register(
 		httpmock.GraphQL(`mutation PullRequestMerge\b`),
 		httpmock.GraphQLMutation(`{}`, func(input map[string]any) {
@@ -1565,13 +1560,12 @@ func TestPRMergeTTY_squashEditCommitMsgAndSubject(t *testing.T) {
 	defer tr.Verify(t)
 
 	tr.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"mergeCommitAllowed": true,
-			"rebaseMergeAllowed": true,
-			"squashMergeAllowed": true
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"allow_merge_commit": true,
+			"allow_rebase_merge": true,
+			"allow_squash_merge": true
+		}`))
 	tr.Register(
 		httpmock.GraphQL(`query PullRequestMergeText\b`),
 		httpmock.StringResponse(`
@@ -1681,13 +1675,12 @@ func TestPRTTY_cancelled(t *testing.T) {
 	)
 
 	http.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"mergeCommitAllowed": true,
-			"rebaseMergeAllowed": true,
-			"squashMergeAllowed": true
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"allow_merge_commit": true,
+			"allow_rebase_merge": true,
+			"allow_squash_merge": true
+		}`))
 
 	cs, cmdTeardown := run.Stub()
 	defer cmdTeardown(t)
@@ -2022,13 +2015,12 @@ func TestPrAddToMergeQueueAdmin(t *testing.T) {
 	)
 
 	http.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"mergeCommitAllowed": true,
-			"rebaseMergeAllowed": true,
-			"squashMergeAllowed": true
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"allow_merge_commit": true,
+			"allow_rebase_merge": true,
+			"allow_squash_merge": true
+		}`))
 
 	http.Register(
 		httpmock.GraphQL(`mutation PullRequestMerge\b`),

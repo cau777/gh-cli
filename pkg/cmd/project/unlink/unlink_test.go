@@ -256,15 +256,10 @@ func TestRunUnlink_Repo(t *testing.T) {
 
 	// get repo ID
 	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`.*query RepositoryInfo.*`).
+		Get("/repos/monalisa/my-repo").
 		Reply(200).
 		JSON(map[string]any{
-			"data": map[string]any{
-				"repository": map[string]any{
-					"id": "repo-ID",
-				},
-			},
+			"node_id": "repo-ID",
 		})
 
 	ios, _, stdout, _ := iostreams.Test()
@@ -366,17 +361,11 @@ func TestRunUnlink_Team(t *testing.T) {
 
 	// get team ID
 	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`.*query OrganizationTeam.*`).
+		Get("/orgs/monalisa-org/teams/my-team").
 		Reply(200).
 		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"team": map[string]any{
-						"id": "team-ID",
-					},
-				},
-			},
+			"node_id": "team-ID",
+			"slug":    "my-team",
 		})
 
 	ios, _, stdout, _ := iostreams.Test()

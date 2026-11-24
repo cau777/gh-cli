@@ -704,7 +704,7 @@ func Test_editRun(t *testing.T) {
 				// Non-interactive with Add/Remove doesn't need reviewer metadata
 				mockRepoMetadata(reg, mockRepoMetadataOptions{})
 				// explicitly assert that no OrganizationTeamList query occurs
-				reg.Exclude(t, httpmock.GraphQL(`query OrganizationTeamList\b`))
+				reg.Exclude(t, httpmock.REST("GET", "orgs/OWNER/teams"))
 				mockPullRequestUpdate(reg)
 				mockRequestReviewsByLogin(reg)
 			},
@@ -724,7 +724,7 @@ func Test_editRun(t *testing.T) {
 				// Non-interactive with Add/Remove doesn't need reviewer metadata
 				mockRepoMetadata(reg, mockRepoMetadataOptions{})
 				// explicitly assert that no OrganizationTeamList query occurs
-				reg.Exclude(t, httpmock.GraphQL(`query OrganizationTeamList\b`))
+				reg.Exclude(t, httpmock.REST("GET", "orgs/OWNER/teams"))
 				mockPullRequestUpdate(reg)
 				mockRequestReviewsByLogin(reg)
 			},
@@ -749,7 +749,7 @@ func Test_editRun(t *testing.T) {
 				// Non-interactive with Add/Remove doesn't need reviewer metadata
 				mockRepoMetadata(reg, mockRepoMetadataOptions{})
 				// explicitly assert that no OrganizationTeamList query occurs
-				reg.Exclude(t, httpmock.GraphQL(`query OrganizationTeamList\b`))
+				reg.Exclude(t, httpmock.REST("GET", "orgs/OWNER/teams"))
 				mockPullRequestUpdate(reg)
 				mockRequestReviewsByLogin(reg)
 			},
@@ -769,7 +769,7 @@ func Test_editRun(t *testing.T) {
 				// Non-interactive with Add/Remove doesn't need reviewer metadata
 				mockRepoMetadata(reg, mockRepoMetadataOptions{})
 				// explicitly assert that no OrganizationTeamList query occurs
-				reg.Exclude(t, httpmock.GraphQL(`query OrganizationTeamList\b`))
+				reg.Exclude(t, httpmock.REST("GET", "orgs/OWNER/teams"))
 				mockPullRequestUpdate(reg)
 				mockRequestReviewsByLogin(reg)
 			},
@@ -1025,16 +1025,11 @@ func Test_editRun(t *testing.T) {
 				// Notice there is no call to mockReplaceActorsForAssignable()
 				// and no GraphQL call to RepositoryAssignableActors below.
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID" },
-							{ "login": "monalisa", "id": "MONAID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "monalisa", "node_id": "MONAID" }
+					]`))
 				mockPullRequestUpdate(reg)
 			},
 			stdout: "https://github.com/OWNER/REPO/pull/123\n",
@@ -1073,16 +1068,11 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Exclude(t, httpmock.GraphQL(`query RepositoryAssignableActors\b`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID" },
-							{ "login": "monalisa", "id": "MONAID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "monalisa", "node_id": "MONAID" }
+					]`))
 				reg.Exclude(t, httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`))
 				mockPullRequestUpdate(reg)
 			},
@@ -1126,34 +1116,22 @@ func Test_editRun(t *testing.T) {
 				// GHES should use legacy metadata fetch for reviewers (AssignableUsers, not Actors)
 				reg.Exclude(t, httpmock.GraphQL(`query RepositoryAssignableActors\b`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID" },
-							{ "login": "monalisa", "id": "MONAID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "monalisa", "node_id": "MONAID" }
+					]`))
 				// GHES should fetch teams for interactive reviewer editing
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "teams": {
-						"nodes": [
-							{ "slug": "external", "id": "EXTERNALID" },
-							{ "slug": "core", "id": "COREID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "external", "node_id": "EXTERNALID" },
+						{ "slug": "core", "node_id": "COREID" }
+					]`))
 				// Current user fetched for reviewers
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`
-					{ "data": { "viewer": { "login": "monalisa" } } }
-					`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "monalisa"}`))
 				mockPullRequestUpdate(reg)
 				mockPullRequestAddReviewers(reg)
 				mockPullRequestRemoveReviewers(reg)
@@ -1180,8 +1158,8 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				// Ensure v1 project queries are NOT made.
-				reg.Exclude(t, httpmock.GraphQL(`query RepositoryProjectList\b`))
-				reg.Exclude(t, httpmock.GraphQL(`query OrganizationProjectList\b`))
+				reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
+				reg.Exclude(t, httpmock.REST("GET", "orgs/OWNER/projects"))
 				// Provide only v2 project metadata queries.
 				reg.Register(
 					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
@@ -1751,54 +1729,34 @@ func mockRepoMetadata(reg *httpmock.Registry, opt mockRepoMetadataOptions) {
 	}
 	if opt.labels {
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryLabelList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "labels": {
-			"nodes": [
-				{ "name": "feature", "id": "FEATUREID" },
-				{ "name": "TODO", "id": "TODOID" },
-				{ "name": "bug", "id": "BUGID" },
-				{ "name": "docs", "id": "DOCSID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+			httpmock.StringResponse(`[
+				{ "name": "feature", "node_id": "FEATUREID" },
+				{ "name": "TODO", "node_id": "TODOID" },
+				{ "name": "bug", "node_id": "BUGID" },
+				{ "name": "docs", "node_id": "DOCSID" }
+			]`))
 	}
 	if opt.milestones {
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "milestones": {
-			"nodes": [
-				{ "title": "GA", "id": "GAID" },
-				{ "title": "Big One.oh", "id": "BIGONEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+			httpmock.StringResponse(`[
+				{ "title": "GA", "node_id": "GAID", "number": 1 },
+				{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+			]`))
 	}
 	if opt.projects {
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryProjectList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [
-				{ "name": "Cleanup", "id": "CLEANUPID" },
-				{ "name": "Roadmap", "id": "ROADMAPID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+			httpmock.StringResponse(`[
+				{ "name": "Cleanup", "node_id": "CLEANUPID" },
+				{ "name": "Roadmap", "node_id": "ROADMAPID" }
+			]`))
 		reg.Register(
-			httpmock.GraphQL(`query OrganizationProjectList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projects": {
-			"nodes": [
-				{ "name": "Triage", "id": "TRIAGEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "orgs/OWNER/projects"),
+			httpmock.StringResponse(`[
+				{ "name": "Triage", "node_id": "TRIAGEID" }
+			]`))
 		reg.Register(
 			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 			httpmock.StringResponse(`
@@ -1833,23 +1791,16 @@ func mockRepoMetadata(reg *httpmock.Registry, opt mockRepoMetadataOptions) {
 	}
 	if opt.teamReviewers && opt.reviewers { // teams only relevant if reviewers edited
 		reg.Register(
-			httpmock.GraphQL(`query OrganizationTeamList\b`),
-			httpmock.StringResponse(`
-      { "data": { "organization": { "teams": {
-        "nodes": [
-          { "slug": "external", "id": "EXTERNALID" },
-          { "slug": "core", "id": "COREID" }
-        ],
-        "pageInfo": { "hasNextPage": false }
-      } } } }
-		`))
+			httpmock.REST("GET", "orgs/OWNER/teams"),
+			httpmock.StringResponse(`[
+				{ "slug": "external", "node_id": "EXTERNALID" },
+				{ "slug": "core", "node_id": "COREID" }
+			]`))
 	}
 	if opt.reviewers { // Current user fetched only when reviewers requested
 		reg.Register(
-			httpmock.GraphQL(`query UserCurrent\b`),
-			httpmock.StringResponse(`
-	  { "data": { "viewer": { "login": "monalisa" } } }
-	`))
+			httpmock.REST("GET", "user"),
+			httpmock.StringResponse(`{"login": "monalisa"}`))
 	}
 }
 

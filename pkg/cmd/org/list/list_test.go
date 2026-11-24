@@ -90,8 +90,8 @@ func TestListRun(t *testing.T) {
 				r := &httpmock.Registry{}
 
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "octocat"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
 					httpmock.GraphQL(`query OrganizationList\b`),
@@ -117,8 +117,8 @@ There are no organizations associated with @octocat
 				r := &httpmock.Registry{}
 
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "octocat"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
 					httpmock.GraphQL(`query OrganizationList\b`),
@@ -153,8 +153,8 @@ cli
 				r := &httpmock.Registry{}
 
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "octocat"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
 					httpmock.GraphQL(`query OrganizationList\b`),
@@ -188,8 +188,8 @@ github
 				r := &httpmock.Registry{}
 
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "octocat"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
 					httpmock.GraphQL(`query OrganizationList\b`),

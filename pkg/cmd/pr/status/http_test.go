@@ -44,9 +44,13 @@ func Test_getCurrentUsername(t *testing.T) {
 				reg := &httpmock.Registry{}
 				defer reg.Verify(t)
 
+				userPath := "user"
+				if tt.hostname != "github.com" {
+					userPath = "api/v3/user"
+				}
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"`+tt.serverUsername+`"}}}`),
+					httpmock.REST("GET", userPath),
+					httpmock.StringResponse(`{"login":"`+tt.serverUsername+`"}`),
 				)
 
 				clientStub.Transport = reg

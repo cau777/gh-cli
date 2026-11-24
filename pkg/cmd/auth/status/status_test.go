@@ -501,8 +501,8 @@ func Test_statusRun(t *testing.T) {
 					httpmock.REST("GET", ""),
 					httpmock.ScopesResponder(""))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantOut: heredoc.Doc(`
 				github.com
@@ -642,8 +642,8 @@ func Test_statusRun(t *testing.T) {
 				reg.Register(httpmock.REST("GET", "api/v3/"), httpmock.StatusStringResponse(404, "{}"))
 				// Get username for monalisa-ghe-2
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa-ghe-2"}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"monalisa-ghe-2"}`))
 			},
 			wantErr: cmdutil.SilentError,
 			wantErrOut: heredoc.Doc(`
@@ -904,8 +904,8 @@ func Test_statusRun(t *testing.T) {
 					httpmock.REST("GET", ""),
 					httpmock.ScopesResponder(""))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantOut: `{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"monalisa","tokenSource":"GH_TOKEN","gitProtocol":"https"}]}}` + "\n",
 		},
@@ -931,10 +931,10 @@ func Test_statusRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				// mock for HeaderHasMinimumScopes api requests to a non-github.com host
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
+					httpmock.REST("GET", "user"),
 					httpmock.StatusStringResponse(400, `no bueno`))
 			},
-			wantOut: `{"hosts":{"github.com":[{"state":"error","error":"non-200 OK status code:  body: \"no bueno\"","active":true,"host":"github.com","login":"","tokenSource":"GH_TOKEN","gitProtocol":"https"}]}}` + "\n",
+			wantOut: `{"hosts":{"github.com":[{"state":"error","error":"HTTP 400 (https://api.github.com/user)","active":true,"host":"github.com","login":"","tokenSource":"GH_TOKEN","gitProtocol":"https"}]}}` + "\n",
 			wantErr: nil, // should not return error in machine-readable mode
 		},
 		{
@@ -1057,29 +1057,29 @@ func Test_statusRun_errorDiagnostic(t *testing.T) {
 		{
 			name:      "unauthorized",
 			responder: httpmock.StatusStringResponse(401, "Bad credentials"),
-			wantError: `non-200 OK status code:  body: "Bad credentials"`,
+			wantError: `HTTP 401 (https://api.github.com/user)`,
 		},
 		{
 			name:      "rate limit",
 			responder: httpmock.StatusStringResponse(403, "API rate limit exceeded"),
-			wantError: `non-200 OK status code:  body: "API rate limit exceeded"`,
+			wantError: `HTTP 403 (https://api.github.com/user)`,
 		},
 		{
 			name:      "server error",
 			responder: httpmock.StatusStringResponse(503, "Service Unavailable"),
-			wantError: `non-200 OK status code:  body: "Service Unavailable"`,
+			wantError: `HTTP 503 (https://api.github.com/user)`,
 		},
 		{
 			name: "network error",
 			responder: func(*http.Request) (*http.Response, error) {
 				return nil, fmt.Errorf("dial tcp: no such host")
 			},
-			wantError: `Post "https://api.github.com/graphql": dial tcp: no such host`,
+			wantError: `Get "https://api.github.com/user": dial tcp: no such host`,
 		},
 		{
-			name:      "GraphQL rate limit",
-			responder: httpmock.StringResponse(`{"errors":[{"type":"RATE_LIMIT","message":"API rate limit exceeded"}]}`),
-			wantError: "GraphQL: API rate limit exceeded",
+			name:      "REST rate limit JSON",
+			responder: httpmock.StatusJSONResponse(403, map[string]string{"message": "API rate limit exceeded"}),
+			wantError: "HTTP 403: API rate limit exceeded (https://api.github.com/user)",
 		},
 	}
 
@@ -1095,7 +1095,7 @@ func Test_statusRun_errorDiagnostic(t *testing.T) {
 					ios.SetStderrTTY(stderrTTY)
 					reg := &httpmock.Registry{}
 					defer reg.Verify(t)
-					reg.Register(httpmock.GraphQL(`query UserCurrent\b`), tt.responder)
+					reg.Register(httpmock.REST("GET", "user"), tt.responder)
 					opts := &StatusOptions{
 						IO:     ios,
 						Config: func() (gh.Config, error) { return cfg, nil },

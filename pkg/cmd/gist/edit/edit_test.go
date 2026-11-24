@@ -734,8 +734,8 @@ func Test_editRun(t *testing.T) {
 				// If a gist is provided, we expect the gist to be fetched.
 				reg.Register(httpmock.REST("GET", fmt.Sprintf("gists/%s", tt.opts.Selector)),
 					httpmock.JSONResponse(tt.mockGist))
-				reg.Register(httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"octocat"}}}`))
+				reg.Register(httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				// Register raw URL mocks for truncated files
 				for filename, file := range tt.mockGist.Files {
@@ -770,8 +770,8 @@ func Test_editRun(t *testing.T) {
 							} }	} }	}`, sixHoursAgo.Format(time.RFC3339))))
 			reg.Register(httpmock.REST("GET", "gists/1234"),
 				httpmock.JSONResponse(tt.mockGist))
-			reg.Register(httpmock.GraphQL(`query UserCurrent\b`),
-				httpmock.StringResponse(`{"data":{"viewer":{"login":"octocat"}}}`))
+			reg.Register(httpmock.REST("GET", "user"),
+				httpmock.StringResponse(`{"login":"octocat"}`))
 
 			gistList := "cicada.txt whatever about 6 hours ago"
 			pm.RegisterSelect("Select a gist",

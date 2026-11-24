@@ -169,15 +169,14 @@ func Test_transferRunSuccessfulIssueTransfer(t *testing.T) {
 			} } }`))
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": {
-						"id": "dest-id",
-						"name": "REPO1",
-						"owner": { "login": "OWNER1" },
-						"viewerPermission": "WRITE",
-						"hasIssuesEnabled": true
-				}}}`))
+		httpmock.REST("GET", "repos/OWNER1/REPO1"),
+		httpmock.StringResponse(`{
+			"node_id": "dest-id",
+			"name": "REPO1",
+			"owner": { "login": "OWNER1" },
+			"permissions": { "push": true },
+			"has_issues": true
+		}`))
 
 	http.Register(
 		httpmock.GraphQL(`mutation IssueTransfer\b`),

@@ -293,8 +293,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "gitignore/templates"),
 					httpmock.StringResponse(`["Actionscript","Android","AppceleratorTitanium","Autotools","Bancha","C","C++","Go"]`))
@@ -357,8 +360,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": [{"login": "org1"}, {"login": "org2"}]}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[{"login":"org1"},{"login":"org2"}]`))
 				reg.Register(
 					httpmock.REST("GET", "users/org1"),
 					httpmock.StringResponse(`{"login":"org1","type":"Organization"}`))
@@ -421,8 +427,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 			},
 			wantStdout: "",
 			wantErr:    true,
@@ -466,8 +475,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation RepositoryCreate\b`),
 					httpmock.StringResponse(`
@@ -532,8 +544,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation RepositoryCreate\b`),
 					httpmock.StringResponse(`
@@ -600,8 +615,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation RepositoryCreate\b`),
 					httpmock.StringResponse(`
@@ -668,11 +686,17 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"OWNER","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"OWNER","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
+				reg.Register(
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.GraphQL(`query RepositoryList\b`),
 					httpmock.FileResponse("./fixtures/repoTempList.json"))
@@ -680,8 +704,8 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "users/OWNER"),
 					httpmock.StringResponse(`{"login":"OWNER","type":"User"}`))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"id":"OWNER"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"OWNER"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.StringResponse(`
@@ -737,11 +761,17 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"OWNER","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"OWNER","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
+				reg.Register(
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.GraphQL(`query RepositoryList\b`),
 					httpmock.StringResponse(`{"data":{"repositoryOwner":{"login":"OWNER","repositories":{"nodes":[]},"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""}}}}`))
@@ -951,27 +981,15 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				// Test resolving repo owner from repo name only.
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"OWNER"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"id": "REPOID",
-								"defaultBranchRef": {
-									"name": "main"
-								}
-							}
-						}
-					}`, func(s string, m map[string]any) {
-						assert.Equal(t, "OWNER", m["owner"])
-						assert.Equal(t, "mytemplate", m["name"])
-					}),
+					httpmock.REST("GET", "repos/OWNER/mytemplate"),
+					httpmock.StringResponse(`{"node_id":"REPOID","default_branch":"main"}`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"id":"OWNERID"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"OWNERID"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.GraphQLMutation(`
@@ -1058,8 +1076,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"someuser","organizations":{"nodes": []}}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"someuser"}`))
+				reg.Register(
+					httpmock.REST("GET", "api/v3/user/orgs"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation RepositoryCreate\b`),
 					httpmock.StringResponse(`

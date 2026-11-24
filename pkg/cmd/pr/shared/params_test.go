@@ -217,22 +217,14 @@ func Test_listURLWithQuery(t *testing.T) {
 func TestMeReplacer_Replace(t *testing.T) {
 	rtSuccess := &httpmock.Registry{}
 	rtSuccess.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`
-		{ "data": {
-			"viewer": { "login": "ResolvedLogin" }
-		} }
-		`),
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login": "ResolvedLogin"}`),
 	)
 
 	rtFailure := &httpmock.Registry{}
 	rtFailure.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StatusStringResponse(500, `
-		{ "data": {
-			"viewer": { }
-		} }
-		`),
+		httpmock.REST("GET", "user"),
+		httpmock.StatusStringResponse(500, `{"message": "error"}`),
 	)
 
 	type args struct {
@@ -496,23 +488,13 @@ func TestWithPrAndIssueQueryParamsProjectsV1Deprecation(t *testing.T) {
 		repo, _ := ghrepo.FromFullName("OWNER/REPO")
 
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryProjectList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+			httpmock.StringResponse(`[]`))
 		reg.Register(
-			httpmock.GraphQL(`query OrganizationProjectList\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projects": {
-			"nodes": [
-				{ "name": "Triage", "id": "TRIAGEID", "resourcePath": "/orgs/ORG/projects/1"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+			httpmock.REST("GET", "orgs/OWNER/projects"),
+			httpmock.StringResponse(`[
+				{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
+			]`))
 		reg.Register(
 			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 			httpmock.StringResponse(`
@@ -569,11 +551,11 @@ func TestWithPrAndIssueQueryParamsProjectsV1Deprecation(t *testing.T) {
 
 		reg.Exclude(
 			t,
-			httpmock.GraphQL(`query RepositoryProjectList\b`),
+			httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 		)
 		reg.Exclude(
 			t,
-			httpmock.GraphQL(`query OrganizationProjectList\b`),
+			httpmock.REST("GET", "orgs/OWNER/projects"),
 		)
 
 		reg.Register(

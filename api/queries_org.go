@@ -1,45 +1,41 @@
 package api
 
 import (
-	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/shurcooL/githubv4"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
-// OrganizationProjects fetches all open projects for an organization.
+type restTeam struct {
+	NodeID string `json:"node_id"`
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+}
+
+// OrganizationProjects fetches all open classic projects for an organization via REST.
 func OrganizationProjects(client *Client, repo ghrepo.Interface) ([]RepoProject, error) {
-	type responseData struct {
-		Organization struct {
-			Projects struct {
-				Nodes    []RepoProject
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"projects(states: [OPEN], first: 100, orderBy: {field: NAME, direction: ASC}, after: $endCursor)"`
-		} `graphql:"organization(login: $owner)"`
+	path, err := safeurl.JoinPath("orgs", repo.RepoOwner(), "projects")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("state", "open")
+	path.SetQuery("per_page", "100")
+
+	rawProjects, err := restPaginate[restProjectV1](client, repo.RepoHost(), path.String(), 0)
+	if err != nil {
+		return nil, err
 	}
 
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"endCursor": (*githubv4.String)(nil),
+	projects := make([]RepoProject, 0, len(rawProjects))
+	for _, p := range rawProjects {
+		projects = append(projects, p.toRepoProject())
 	}
-
-	var projects []RepoProject
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "OrganizationProjectList", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		projects = append(projects, query.Organization.Projects.Nodes...)
-		if !query.Organization.Projects.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Organization.Projects.PageInfo.EndCursor)
-	}
-
+	slices.SortFunc(projects, func(a, b RepoProject) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return projects, nil
 }
 
@@ -48,64 +44,46 @@ type OrgTeam struct {
 	Slug string
 }
 
-// OrganizationTeam fetch the team in an organization with the given slug
+// OrganizationTeam fetches the team in an organization with the given slug via REST.
 func OrganizationTeam(client *Client, hostname string, org string, teamSlug string) (*OrgTeam, error) {
-	type responseData struct {
-		Organization struct {
-			Team OrgTeam `graphql:"team(slug: $teamSlug)"`
-		} `graphql:"organization(login: $owner)"`
-	}
-
-	variables := map[string]any{
-		"owner":    githubv4.String(org),
-		"teamSlug": githubv4.String(teamSlug),
-	}
-
-	var query responseData
-	err := client.Query(hostname, "OrganizationTeam", &query, variables)
+	path, err := safeurl.JoinPath("orgs", org, "teams", teamSlug)
 	if err != nil {
 		return nil, err
 	}
-	if query.Organization.Team.ID == "" {
-		return nil, fmt.Errorf("could not resolve to a Team with the slug of '%s'", teamSlug)
+
+	var team restTeam
+	if err := client.REST(hostname, http.MethodGet, path.String(), nil, &team); err != nil {
+		return nil, err
 	}
 
-	return &query.Organization.Team, nil
+	return &OrgTeam{
+		ID:   team.NodeID,
+		Slug: team.Slug,
+	}, nil
 }
 
-// OrganizationTeams fetches all the teams in an organization
+// OrganizationTeams fetches all the teams in an organization via REST.
 func OrganizationTeams(client *Client, repo ghrepo.Interface) ([]OrgTeam, error) {
-	type responseData struct {
-		Organization struct {
-			Teams struct {
-				Nodes    []OrgTeam
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"teams(first: 100, orderBy: {field: NAME, direction: ASC}, after: $endCursor)"`
-		} `graphql:"organization(login: $owner)"`
+	path, err := safeurl.JoinPath("orgs", repo.RepoOwner(), "teams")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("per_page", "100")
+
+	rawTeams, err := restPaginate[restTeam](client, repo.RepoHost(), path.String(), 0)
+	if err != nil {
+		return nil, err
 	}
 
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"endCursor": (*githubv4.String)(nil),
+	teams := make([]OrgTeam, 0, len(rawTeams))
+	for _, t := range rawTeams {
+		teams = append(teams, OrgTeam{
+			ID:   t.NodeID,
+			Slug: t.Slug,
+		})
 	}
-
-	var teams []OrgTeam
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "OrganizationTeamList", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		teams = append(teams, query.Organization.Teams.Nodes...)
-		if !query.Organization.Teams.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Organization.Teams.PageInfo.EndCursor)
-	}
-
+	slices.SortFunc(teams, func(a, b OrgTeam) int {
+		return strings.Compare(strings.ToLower(a.Slug), strings.ToLower(b.Slug))
+	})
 	return teams, nil
 }

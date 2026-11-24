@@ -651,8 +651,10 @@ func Test_setRun_org(t *testing.T) {
 				httpmock.StatusStringResponse(201, `{}`))
 
 			if len(tt.opts.RepositoryNames) > 0 {
-				reg.Register(httpmock.GraphQL(`query MapRepositoryNames\b`),
-					httpmock.StringResponse(`{"data":{"repo_0001":{"databaseId":1},"repo_0002":{"databaseId":2}}}`))
+				reg.Register(httpmock.REST("GET", "repos/UmbrellaCorporation/birkin"),
+					httpmock.StringResponse(`{"id":1}`))
+				reg.Register(httpmock.REST("GET", "repos/UmbrellaCorporation/wesker"),
+					httpmock.StringResponse(`{"id":2}`))
 			}
 
 			ios, _, _, _ := iostreams.Test()
@@ -736,8 +738,10 @@ func Test_setRun_user(t *testing.T) {
 				httpmock.StatusStringResponse(201, `{}`))
 
 			if len(tt.opts.RepositoryNames) > 0 {
-				reg.Register(httpmock.GraphQL(`query MapRepositoryNames\b`),
-					httpmock.StringResponse(`{"data":{"repo_0001":{"databaseId":212613049},"repo_0002":{"databaseId":401025}}}`))
+				reg.Register(httpmock.REST("GET", "repos/cli/cli"),
+					httpmock.StringResponse(`{"id":212613049}`))
+				reg.Register(httpmock.REST("GET", "repos/github/hub"),
+					httpmock.StringResponse(`{"id":401025}`))
 			}
 
 			ios, _, _, _ := iostreams.Test()

@@ -438,8 +438,8 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "monalisa"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 				reg.Register(
 					httpmock.GraphQL(`query IssueList\b`),
 					httpmock.GraphQLQuery(`

@@ -3,6 +3,7 @@ package clone
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/cli/cli/v2/git"
@@ -243,17 +244,15 @@ func Test_RepoClone(t *testing.T) {
 			reg := &httpmock.Registry{}
 			defer reg.Verify(t)
 			reg.Register(
-				httpmock.GraphQL(`query RepositoryInfo\b`),
-				httpmock.StringResponse(`
-				{ "data": { "repository": {
+				func(req *http.Request) bool {
+					return req.Method == http.MethodGet && (strings.EqualFold(req.URL.Path, "/repos/OWNER/REPO") || strings.EqualFold(req.URL.Path, "/api/v3/repos/OWNER/REPO"))
+				},
+				httpmock.StringResponse(`{
 					"name": "REPO",
-					"owner": {
-						"login": "OWNER"
-					},
-					"sshUrl": "`+tt.sshURL+`",
-					"hasWikiEnabled": true
-				} } }
-				`))
+					"owner": {"login": "OWNER"},
+					"ssh_url": "`+tt.sshURL+`",
+					"has_wiki": true
+				}`))
 
 			httpClient := &http.Client{Transport: reg}
 
@@ -280,13 +279,8 @@ func Test_RepoClone_missingSSHURL(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"name": "REPO",
-				"owner": {"login": "OWNER"}
-			} } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
 
 	cfg := config.NewMockConfig()
 	cfg.Set("", "git_protocol", "ssh")
@@ -299,24 +293,16 @@ func Test_RepoClone_hasParent(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": {
-					"name": "REPO",
-					"owner": {
-						"login": "OWNER"
-					},
-					"parent": {
-						"name": "ORIG",
-						"owner": {
-							"login": "hubot"
-						},
-						"defaultBranchRef": {
-							"name": "trunk"
-						}
-					}
-				} } }
-				`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"name": "REPO",
+			"owner": {"login": "OWNER"},
+			"parent": {
+				"name": "ORIG",
+				"owner": {"login": "hubot"},
+				"default_branch": "trunk"
+			}
+		}`))
 
 	httpClient := &http.Client{Transport: reg}
 
@@ -339,20 +325,18 @@ func Test_RepoClone_hasParentWithSSHCertificateAuthorityURLs(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"name": "REPO",
-				"owner": {"login": "OWNER"},
-				"sshUrl": "org-1234@github.com:OWNER/REPO.git",
-				"parent": {
-					"name": "ORIG",
-					"owner": {"login": "hubot"},
-					"sshUrl": "org-5678@github.com:hubot/ORIG.git",
-					"defaultBranchRef": {"name": "trunk"}
-				}
-			} } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"name": "REPO",
+			"owner": {"login": "OWNER"},
+			"ssh_url": "org-1234@github.com:OWNER/REPO.git",
+			"parent": {
+				"name": "ORIG",
+				"owner": {"login": "hubot"},
+				"ssh_url": "org-5678@github.com:hubot/ORIG.git",
+				"default_branch": "trunk"
+			}
+		}`))
 
 	cfg := config.NewMockConfig()
 	cfg.Set("", "git_protocol", "ssh")
@@ -374,24 +358,16 @@ func Test_RepoClone_hasParent_upstreamRemoteName(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": {
-					"name": "REPO",
-					"owner": {
-						"login": "OWNER"
-					},
-					"parent": {
-						"name": "ORIG",
-						"owner": {
-							"login": "hubot"
-						},
-						"defaultBranchRef": {
-							"name": "trunk"
-						}
-					}
-				} } }
-				`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"name": "REPO",
+			"owner": {"login": "OWNER"},
+			"parent": {
+				"name": "ORIG",
+				"owner": {"login": "hubot"},
+				"default_branch": "trunk"
+			}
+		}`))
 
 	httpClient := &http.Client{Transport: reg}
 
@@ -414,21 +390,11 @@ func Test_RepoClone_withoutUsername(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`
-		{ "data": { "viewer": {
-			"login": "OWNER"
-		}}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"OWNER"}`))
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": {
-					"name": "REPO",
-					"owner": {
-						"login": "OWNER"
-					}
-				} } }
-				`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
 
 	httpClient := &http.Client{Transport: reg}
 
@@ -449,24 +415,16 @@ func Test_RepoClone_hasParent_noUpstream(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": {
-					"name": "REPO",
-					"owner": {
-						"login": "OWNER"
-					},
-					"parent": {
-						"name": "ORIG",
-						"owner": {
-							"login": "hubot"
-						},
-						"defaultBranchRef": {
-							"name": "trunk"
-						}
-					}
-				} } }
-				`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"name": "REPO",
+			"owner": {"login": "OWNER"},
+			"parent": {
+				"name": "ORIG",
+				"owner": {"login": "hubot"},
+				"default_branch": "trunk"
+			}
+		}`))
 
 	httpClient := &http.Client{Transport: reg}
 
@@ -486,15 +444,8 @@ func Test_RepoClone_noParent_noUpstream(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": {
-					"name": "REPO",
-					"owner": {
-						"login": "OWNER"
-					}
-				} } }
-				`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
 
 	httpClient := &http.Client{Transport: reg}
 

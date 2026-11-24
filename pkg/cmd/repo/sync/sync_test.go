@@ -274,8 +274,8 @@ func Test_SyncRun(t *testing.T) {
 			opts: &SyncOptions{},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`))
 			},
 			gitStubs: func(mgc *mockGitClient) {
 				mgc.On("Fetch", "origin", "refs/heads/trunk").Return(nil).Once()
@@ -471,8 +471,8 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/FORKOWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusStringResponse(200, `{"base_branch": "OWNER:trunk"}`))
@@ -487,11 +487,11 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryFindParent\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"parent":{"name":"REPO","owner":{"login": "OWNER"}}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/FORKOWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusStringResponse(422, `{}`))
@@ -512,8 +512,8 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/FORKOWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusStringResponse(200, `{"base_branch": "OWNER:trunk"}`))
@@ -532,8 +532,8 @@ func Test_SyncRun(t *testing.T) {
 					httpmock.REST("POST", "repos/OWNER/REPO/merge-upstream"),
 					httpmock.StatusStringResponse(422, `{"message": "Validation Failed"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryFindParent\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"parent":null}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"parent":null}`))
 			},
 			wantErr: true,
 			errMsg:  "can't determine source repository for OWNER/REPO because repository is not fork",
@@ -576,11 +576,11 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryFindParent\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"parent":{"name":"REPO","owner":{"login": "OWNER"}}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusStringResponse(409, `{"message": "Merge conflict"}`))
@@ -601,11 +601,11 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryFindParent\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"parent":{"name":"REPO","owner":{"login": "OWNER"}}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusStringResponse(409, `{"message": "Merge conflict"}`))
@@ -634,11 +634,11 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryFindParent\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"parent":{"name":"REPO","owner":{"login": "OWNER"}}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk","parent":{"name":"REPO","owner":{"login":"OWNER"}}}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusStringResponse(409, `{"message": "Merge conflict"}`))
@@ -666,8 +666,8 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/FORKOWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusJSONResponse(422, struct {
@@ -684,8 +684,8 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/FORKOWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusJSONResponse(422, struct {
@@ -702,8 +702,8 @@ func Test_SyncRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"defaultBranchRef":{"name": "trunk"}}}}`))
+					httpmock.REST("GET", "repos/FORKOWNER/REPO-FORK"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/FORKOWNER/REPO-FORK/merge-upstream"),
 					httpmock.StatusJSONResponse(422, struct {

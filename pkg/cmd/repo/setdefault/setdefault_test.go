@@ -284,10 +284,9 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO2","owner":{"login":"OWNER2"}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER2/REPO2"), httpmock.StringResponse(`{"name":"REPO2","owner":{"login":"OWNER2"}}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --add remote.upstream.gh-resolved base`, 0, "")
@@ -309,10 +308,9 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO","owner":{"login":"OWNER"},"parent":{"name":"REPO2","owner":{"login":"OWNER2"}}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"parent":{"name":"REPO2","owner":{"login":"OWNER2"}}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER3/REPO3"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --add remote.upstream.gh-resolved OWNER2/REPO2`, 0, "")
@@ -333,10 +331,9 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO2","owner":{"login":"OWNER2"}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER2/REPO2"), httpmock.StringResponse(`{"name":"REPO2","owner":{"login":"OWNER2"}}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --add remote.upstream.gh-resolved base`, 0, "")
@@ -358,10 +355,9 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO2","owner":{"login":"OWNER2"}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER2/REPO2"), httpmock.StringResponse(`{"name":"REPO2","owner":{"login":"OWNER2"}}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --unset remote.origin.gh-resolved`, 0, "")
@@ -379,10 +375,8 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 			},
 			wantErr: true,
 			errMsg:  "none of the git remotes correspond to a valid remote repository",
@@ -397,10 +391,8 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO","owner":{"login":"OWNER"}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
 			},
 			wantErr: true,
 			errMsg:  "OWNER2/REPO2 does not correspond to any git remotes",
@@ -420,10 +412,9 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO","owner":{"login":"OWNER"}},"repo_001":{"name":"REPO2","owner":{"login":"OWNER2"}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER2/REPO2"), httpmock.StringResponse(`{"name":"REPO2","owner":{"login":"OWNER2"}}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --add remote.upstream.gh-resolved base`, 0, "")
@@ -432,7 +423,7 @@ func TestDefaultRun(t *testing.T) {
 				pm.SelectFunc = func(p, d string, opts []string) (int, error) {
 					switch p {
 					case "Which repository should be the default?":
-						prompter.AssertOptions(t, []string{"OWNER/REPO", "OWNER2/REPO2"}, opts)
+						prompter.AssertOptions(t, []string{"OWNER2/REPO2", "OWNER/REPO"}, opts)
 						return prompter.IndexFor(opts, "OWNER2/REPO2")
 					default:
 						return -1, prompter.NoSuchPromptErr(p)
@@ -456,10 +447,9 @@ func TestDefaultRun(t *testing.T) {
 				},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.StringResponse(`{"data":{"repo_000":{"name":"REPO2","owner":{"login":"OWNER2"}}}}`),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER2/REPO2"), httpmock.StringResponse(`{"name":"REPO2","owner":{"login":"OWNER2"}}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --add remote.upstream.gh-resolved base`, 0, "")
@@ -479,25 +469,13 @@ func TestDefaultRun(t *testing.T) {
 				{Remote: &git.Remote{Name: "other4"}, Repo: repo6},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryNetwork\b`),
-					httpmock.GraphQLQuery(`{"data":{
-            "repo_000":{"name":"REPO","owner":{"login":"OWNER"}},
-            "repo_001":{"name":"REPO2","owner":{"login":"OWNER2"}},
-            "repo_002":{"name":"REPO3","owner":{"login":"OWNER3"}},
-            "repo_003":{"name":"REPO4","owner":{"login":"OWNER4"}},
-            "repo_004":{"name":"REPO5","owner":{"login":"OWNER5"}},
-            "repo_005":{"name":"REPO6","owner":{"login":"OWNER6"}}
-          }}`,
-						func(query string, inputs map[string]any) {
-							assert.Contains(t, query, "repo_000")
-							assert.Contains(t, query, "repo_001")
-							assert.Contains(t, query, "repo_002")
-							assert.Contains(t, query, "repo_003")
-							assert.Contains(t, query, "repo_004")
-							assert.Contains(t, query, "repo_005")
-						}),
-				)
+				reg.Register(httpmock.REST("GET", "user"), httpmock.StringResponse(`{"login":"OWNER"}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO"), httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER2/REPO2"), httpmock.StringResponse(`{"name":"REPO2","owner":{"login":"OWNER2"}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER3/REPO3"), httpmock.StringResponse(`{"name":"REPO3","owner":{"login":"OWNER3"}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER4/REPO4"), httpmock.StringResponse(`{"name":"REPO4","owner":{"login":"OWNER4"}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER5/REPO5"), httpmock.StringResponse(`{"name":"REPO5","owner":{"login":"OWNER5"}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER6/REPO6"), httpmock.StringResponse(`{"name":"REPO6","owner":{"login":"OWNER6"}}`))
 			},
 			gitStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git config --add remote.upstream.gh-resolved base`, 0, "")
@@ -506,7 +484,7 @@ func TestDefaultRun(t *testing.T) {
 				pm.SelectFunc = func(p, d string, opts []string) (int, error) {
 					switch p {
 					case "Which repository should be the default?":
-						prompter.AssertOptions(t, []string{"OWNER/REPO", "OWNER2/REPO2", "OWNER3/REPO3", "OWNER4/REPO4", "OWNER5/REPO5", "OWNER6/REPO6"}, opts)
+						prompter.AssertOptions(t, []string{"OWNER2/REPO2", "OWNER/REPO", "OWNER3/REPO3", "OWNER4/REPO4", "OWNER5/REPO5", "OWNER6/REPO6"}, opts)
 						return prompter.IndexFor(opts, "OWNER2/REPO2")
 					default:
 						return -1, prompter.NoSuchPromptErr(p)

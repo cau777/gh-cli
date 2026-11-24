@@ -194,7 +194,9 @@ func Test_RepoView_Web(t *testing.T) {
 
 	for _, tt := range tests {
 		reg := &httpmock.Registry{}
-		reg.StubRepoInfoResponse("OWNER", "REPO", "main")
+		reg.Register(
+			httpmock.GraphQL(`query RepositoryInfo\b`),
+			httpmock.StringResponse(`{"data":{"repository":{"name":"REPO","owner":{"login":"OWNER"}}}}`))
 
 		browser := &browser.Stub{}
 		opts := &ViewOptions{
@@ -577,11 +579,8 @@ func Test_ViewRun_NoDescription(t *testing.T) {
 func Test_ViewRun_WithoutUsername(t *testing.T) {
 	reg := &httpmock.Registry{}
 	reg.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`
-		{ "data": { "viewer": {
-			"login": "OWNER"
-		}}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"OWNER"}`))
 	reg.Register(
 		httpmock.GraphQL(`query RepositoryInfo\b`),
 		httpmock.StringResponse(`
@@ -712,7 +711,9 @@ func Test_viewRun_json(t *testing.T) {
 
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
-	reg.StubRepoInfoResponse("OWNER", "REPO", "main")
+	reg.Register(
+		httpmock.GraphQL(`query RepositoryInfo\b`),
+		httpmock.StringResponse(`{"data":{"repository":{"name":"REPO","defaultBranchRef":{"name":"main"}}}}`))
 
 	opts := &ViewOptions{
 		IO: io,

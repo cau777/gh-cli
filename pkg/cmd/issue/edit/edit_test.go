@@ -748,16 +748,11 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				// Should only be one fetch of metadata.
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "milestones": {
-						"nodes": [
-							{ "title": "GA", "id": "GAID" },
-							{ "title": "Big One.oh", "id": "BIGONEID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+					httpmock.StringResponse(`[
+						{ "title": "GA", "node_id": "GAID", "number": 1 },
+						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+					]`))
 				// All other queries should be doubled.
 				mockIssueNumberGet(t, reg, 123)
 				mockIssueNumberGet(t, reg, 456)
@@ -918,16 +913,11 @@ func Test_editRun(t *testing.T) {
                         } } } }`, 123)),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID", "name": "" },
-							{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation IssueUpdate\b`),
 					httpmock.GraphQLMutation(`
@@ -1914,50 +1904,30 @@ func mockIssueProjectItemsGet(_ *testing.T, reg *httpmock.Registry) {
 
 func mockRepoMetadata(_ *testing.T, reg *httpmock.Registry) {
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryLabelList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "labels": {
-			"nodes": [
-				{ "name": "feature", "id": "FEATUREID" },
-				{ "name": "TODO", "id": "TODOID" },
-				{ "name": "bug", "id": "BUGID" },
-				{ "name": "docs", "id": "DOCSID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+		httpmock.StringResponse(`[
+			{ "name": "feature", "node_id": "FEATUREID" },
+			{ "name": "TODO", "node_id": "TODOID" },
+			{ "name": "bug", "node_id": "BUGID" },
+			{ "name": "docs", "node_id": "DOCSID" }
+		]`))
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "milestones": {
-			"nodes": [
-				{ "title": "GA", "id": "GAID" },
-				{ "title": "Big One.oh", "id": "BIGONEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+		httpmock.StringResponse(`[
+			{ "title": "GA", "node_id": "GAID", "number": 1 },
+			{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+		]`))
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryProjectList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [
-				{ "name": "Cleanup", "id": "CLEANUPID" },
-				{ "name": "Roadmap", "id": "ROADMAPID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Cleanup", "node_id": "CLEANUPID" },
+			{ "name": "Roadmap", "node_id": "ROADMAPID" }
+		]`))
 	reg.Register(
-		httpmock.GraphQL(`query OrganizationProjectList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "organization": { "projects": {
-			"nodes": [
-				{ "name": "Triage", "id": "TRIAGEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "orgs/OWNER/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Triage", "node_id": "TRIAGEID" }
+		]`))
 	reg.Register(
 		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 		httpmock.StringResponse(`

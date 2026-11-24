@@ -142,8 +142,8 @@ func TestRenameRun(t *testing.T) {
 		} else {
 			reg.Register(httpmock.REST("GET", "gists/1234"),
 				httpmock.JSONResponse(tt.gist))
-			reg.Register(httpmock.GraphQL(`query UserCurrent\b`),
-				httpmock.StringResponse(`{"data":{"viewer":{"login":"octocat"}}}`))
+			reg.Register(httpmock.REST("GET", "user"),
+				httpmock.StringResponse(`{"login":"octocat"}`))
 		}
 
 		if tt.httpStubs != nil {

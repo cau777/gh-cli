@@ -8,17 +8,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/cli/cli/v2/internal/gh"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/safeurl"
 	ghAPI "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/shurcooL/githubv4"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -315,101 +314,22 @@ func FetchRepository(client *Client, repo ghrepo.Interface, fields []string) (*R
 	return InitRepoHostname(result.Repository, repo.RepoHost()), nil
 }
 
-// IssueRepoInfo fetches only the repository fields needed for issue operations such as
-// issue creation and transfer, avoiding fields like defaultBranchRef that require additional
-// token permissions.
+// IssueRepoInfo fetches repository metadata needed for issue operations via REST.
 func IssueRepoInfo(client *Client, repo ghrepo.Interface) (*Repository, error) {
-	query := `
-	query IssueRepositoryInfo($owner: String!, $name: String!) {
-		repository(owner: $owner, name: $name) {
-			id
-			databaseId
-			name
-			owner { login }
-			hasIssuesEnabled
-			viewerPermission
-		}
-	}`
-	variables := map[string]any{
-		"owner": repo.RepoOwner(),
-		"name":  repo.RepoName(),
-	}
-
-	var result struct {
-		Repository *Repository
-	}
-	if err := client.GraphQL(repo.RepoHost(), query, variables, &result); err != nil {
+	res, err := fetchRESTRepo(client, repo)
+	if err != nil {
 		return nil, err
 	}
-	// The GraphQL API should have returned an error in case of a missing repository, but this isn't
-	// guaranteed to happen when an authentication token with insufficient permissions is being used.
-	if result.Repository == nil {
-		return nil, GraphQLError{
-			GraphQLError: &ghAPI.GraphQLError{
-				Errors: []ghAPI.GraphQLErrorItem{{
-					Type:    "NOT_FOUND",
-					Message: fmt.Sprintf("Could not resolve to a Repository with the name '%s/%s'.", repo.RepoOwner(), repo.RepoName()),
-				}},
-			},
-		}
-	}
-
-	return InitRepoHostname(result.Repository, repo.RepoHost()), nil
+	return res.toRepository(repo.RepoHost()), nil
 }
 
+// GitHubRepo fetches repository metadata via REST.
 func GitHubRepo(client *Client, repo ghrepo.Interface) (*Repository, error) {
-	query := `
-	fragment repo on Repository {
-		id
-		databaseId
-		name
-		owner { login }
-		sshUrl
-		hasIssuesEnabled
-		description
-		hasWikiEnabled
-		viewerPermission
-		defaultBranchRef {
-			name
-		}
-	}
-
-	query RepositoryInfo($owner: String!, $name: String!) {
-		repository(owner: $owner, name: $name) {
-			...repo
-			parent {
-				...repo
-			}
-			mergeCommitAllowed
-			rebaseMergeAllowed
-			squashMergeAllowed
-		}
-	}`
-	variables := map[string]any{
-		"owner": repo.RepoOwner(),
-		"name":  repo.RepoName(),
-	}
-
-	var result struct {
-		Repository *Repository
-	}
-	if err := client.GraphQL(repo.RepoHost(), query, variables, &result); err != nil {
+	res, err := fetchRESTRepo(client, repo)
+	if err != nil {
 		return nil, err
 	}
-	// The GraphQL API should have returned an error in case of a missing repository, but this isn't
-	// guaranteed to happen when an authentication token with insufficient permissions is being used.
-	if result.Repository == nil {
-		return nil, GraphQLError{
-			GraphQLError: &ghAPI.GraphQLError{
-				Errors: []ghAPI.GraphQLErrorItem{{
-					Type:    "NOT_FOUND",
-					Message: fmt.Sprintf("Could not resolve to a Repository with the name '%s/%s'.", repo.RepoOwner(), repo.RepoName()),
-				}},
-			},
-		}
-	}
-
-	return InitRepoHostname(result.Repository, repo.RepoHost()), nil
+	return res.toRepository(repo.RepoHost()), nil
 }
 
 func RepoDefaultBranch(client *Client, repo ghrepo.Interface) (string, error) {
@@ -437,34 +357,17 @@ func CanPushToRepo(httpClient *http.Client, repo ghrepo.Interface) (bool, error)
 	return r.ViewerCanPush(), nil
 }
 
-// RepoParent finds out the parent repository of a fork
+// RepoParent finds out the parent repository of a fork via REST.
 func RepoParent(client *Client, repo ghrepo.Interface) (ghrepo.Interface, error) {
-	var query struct {
-		Repository struct {
-			Parent *struct {
-				Name  string
-				Owner struct {
-					Login string
-				}
-			}
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	variables := map[string]any{
-		"owner": githubv4.String(repo.RepoOwner()),
-		"name":  githubv4.String(repo.RepoName()),
-	}
-
-	err := client.Query(repo.RepoHost(), "RepositoryFindParent", &query, variables)
+	res, err := fetchRESTRepo(client, repo)
 	if err != nil {
 		return nil, err
 	}
-	if query.Repository.Parent == nil {
+	if res.Parent == nil || res.Parent.Owner == nil {
 		return nil, nil
 	}
 
-	parent := ghrepo.NewWithHost(query.Repository.Parent.Owner.Login, query.Repository.Parent.Name, repo.RepoHost())
-	return parent, nil
+	return ghrepo.NewWithHost(res.Parent.Owner.Login, res.Parent.Name, repo.RepoHost()), nil
 }
 
 // RepoNetworkResult describes the relationship between related repositories
@@ -473,99 +376,43 @@ type RepoNetworkResult struct {
 	Repositories []*Repository
 }
 
-// RepoNetwork inspects the relationship between multiple GitHub repositories
+// RepoNetwork inspects the relationship between multiple GitHub repositories via REST.
 func RepoNetwork(client *Client, repos []ghrepo.Interface) (RepoNetworkResult, error) {
-	var hostname string
-	if len(repos) > 0 {
-		hostname = repos[0].RepoHost()
+	if len(repos) == 0 {
+		return RepoNetworkResult{}, nil
 	}
 
-	queries := make([]string, 0, len(repos))
+	hostname := repos[0].RepoHost()
+	result := RepoNetworkResult{
+		Repositories: make([]*Repository, len(repos)),
+	}
+
+	g, _ := errgroup.WithContext(context.Background())
+	g.Go(func() error {
+		login, err := CurrentLoginName(client, hostname)
+		if err != nil {
+			return err
+		}
+		result.ViewerLogin = login
+		return nil
+	})
+
 	for i, repo := range repos {
-		queries = append(queries, fmt.Sprintf(`
-		repo_%03d: repository(owner: %q, name: %q) {
-			...repo
-			parent {
-				...repo
+		g.Go(func() error {
+			res, err := fetchRESTRepo(client, repo)
+			if err != nil {
+				if isHTTPNotFound(err) {
+					return nil
+				}
+				return err
 			}
-		}
-		`, i, repo.RepoOwner(), repo.RepoName()))
+			result.Repositories[i] = res.toRepository(repo.RepoHost())
+			return nil
+		})
 	}
 
-	// Since the query is constructed dynamically, we can't parse a response
-	// format using a static struct. Instead, hold the raw JSON data until we
-	// decide how to parse it manually.
-	graphqlResult := make(map[string]*json.RawMessage)
-	var result RepoNetworkResult
-
-	err := client.GraphQL(hostname, fmt.Sprintf(`
-	fragment repo on Repository {
-		id
-		databaseId
-		name
-		owner { login }
-		viewerPermission
-		defaultBranchRef {
-			name
-		}
-		isPrivate
-	}
-	query RepositoryNetwork {
-		viewer { login }
-		%s
-	}
-	`, strings.Join(queries, "")), nil, &graphqlResult)
-	if graphqlError, ok := errors.AsType[GraphQLError](err); ok {
-		// If the only errors are that certain repositories are not found,
-		// continue processing this response instead of returning an error
-		tolerated := true
-		for _, ge := range graphqlError.Errors {
-			if ge.Type != "NOT_FOUND" {
-				tolerated = false
-			}
-		}
-		if tolerated {
-			err = nil
-		}
-	}
-	if err != nil {
-		return result, err
-	}
-
-	keys := make([]string, 0, len(graphqlResult))
-	for key := range graphqlResult {
-		keys = append(keys, key)
-	}
-	// sort keys to ensure `repo_{N}` entries are processed in order
-	sort.Strings(keys)
-
-	// Iterate over keys of GraphQL response data and, based on its name,
-	// dynamically allocate the target struct an individual message gets decoded to.
-	for _, name := range keys {
-		jsonMessage := graphqlResult[name]
-		if name == "viewer" {
-			viewerResult := struct {
-				Login string
-			}{}
-			decoder := json.NewDecoder(bytes.NewReader([]byte(*jsonMessage)))
-			if err := decoder.Decode(&viewerResult); err != nil {
-				return result, err
-			}
-			result.ViewerLogin = viewerResult.Login
-		} else if strings.HasPrefix(name, "repo_") {
-			if jsonMessage == nil {
-				result.Repositories = append(result.Repositories, nil)
-				continue
-			}
-			var repo Repository
-			decoder := json.NewDecoder(bytes.NewReader(*jsonMessage))
-			if err := decoder.Decode(&repo); err != nil {
-				return result, err
-			}
-			result.Repositories = append(result.Repositories, InitRepoHostname(&repo, hostname))
-		} else {
-			return result, fmt.Errorf("unknown GraphQL result key %q", name)
-		}
+	if err := g.Wait(); err != nil {
+		return RepoNetworkResult{}, err
 	}
 	return result, nil
 }
@@ -673,68 +520,84 @@ func RenameRepo(client *Client, repo ghrepo.Interface, newRepoName string) (*Rep
 	}, nil
 }
 
+// LastCommit returns the latest commit OID on the repository's default branch via REST.
 func LastCommit(client *Client, repo ghrepo.Interface) (*Commit, error) {
-	var responseData struct {
-		Repository struct {
-			DefaultBranchRef struct {
-				Target struct {
-					Commit `graphql:"... on Commit"`
-				}
-			}
-		} `graphql:"repository(owner: $owner, name: $repo)"`
-	}
-	variables := map[string]any{
-		"owner": githubv4.String(repo.RepoOwner()), "repo": githubv4.String(repo.RepoName()),
-	}
-	if err := client.Query(repo.RepoHost(), "LastCommit", &responseData, variables); err != nil {
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "commits")
+	if err != nil {
 		return nil, err
 	}
-	return &responseData.Repository.DefaultBranchRef.Target.Commit, nil
+	path.SetQuery("per_page", "1")
+
+	var commits []struct {
+		SHA string `json:"sha"`
+	}
+	if err := client.REST(repo.RepoHost(), http.MethodGet, path.String(), nil, &commits); err != nil {
+		if httpErr, ok := errors.AsType[HTTPError](err); ok && httpErr.StatusCode == http.StatusConflict {
+			return &Commit{}, nil
+		}
+		return nil, err
+	}
+	if len(commits) == 0 {
+		return &Commit{}, nil
+	}
+	return &Commit{OID: commits[0].SHA}, nil
 }
 
-// RepoFindForks finds forks of the repo that are affiliated with the viewer
+// RepoFindForks finds pushable forks of the repo via REST.
+// Because the REST forks endpoint does not filter by viewer affiliation, it first
+// checks the viewer's own repository of the same name and then inspects recent forks.
 func RepoFindForks(client *Client, repo ghrepo.Interface, limit int) ([]*Repository, error) {
-	result := struct {
-		Repository struct {
-			Forks struct {
-				Nodes []Repository
-			}
-		}
-	}{}
-
-	variables := map[string]any{
-		"owner": repo.RepoOwner(),
-		"repo":  repo.RepoName(),
-		"limit": limit,
-	}
-
-	if err := client.GraphQL(repo.RepoHost(), `
-	query RepositoryFindFork($owner: String!, $repo: String!, $limit: Int!) {
-		repository(owner: $owner, name: $repo) {
-			forks(first: $limit, affiliations: [OWNER, COLLABORATOR]) {
-				nodes {
-					id
-					name
-					owner { login }
-					url
-					viewerPermission
-				}
-			}
-		}
-	}
-	`, variables, &result); err != nil {
-		return nil, err
+	if limit <= 0 {
+		return nil, nil
 	}
 
 	var results []*Repository
-	for _, r := range result.Repository.Forks.Nodes {
-		// we check ViewerCanPush, even though we expect it to always be true per
-		// `affiliations` condition, to guard against versions of GitHub with a
-		// faulty `affiliations` implementation
-		if !r.ViewerCanPush() {
-			continue
+	seen := map[string]struct{}{}
+	addFork := func(r *Repository) {
+		if r == nil || !r.ViewerCanPush() {
+			return
 		}
-		results = append(results, InitRepoHostname(&r, repo.RepoHost()))
+		key := strings.ToLower(ghrepo.FullName(r))
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		results = append(results, r)
+	}
+
+	if viewerLogin, err := CurrentLoginName(client, repo.RepoHost()); err == nil && viewerLogin != "" && !strings.EqualFold(viewerLogin, repo.RepoOwner()) {
+		ownCandidate := ghrepo.NewWithHost(viewerLogin, repo.RepoName(), repo.RepoHost())
+		if ownRes, err := fetchRESTRepo(client, ownCandidate); err == nil {
+			if ownRes.Fork && ownRes.Parent != nil && strings.EqualFold(ownRes.Parent.FullName, ghrepo.FullName(repo)) {
+				addFork(ownRes.toRepository(repo.RepoHost()))
+			}
+		} else if !isHTTPNotFound(err) {
+			return nil, err
+		}
+	}
+
+	if len(results) >= limit {
+		return results[:limit], nil
+	}
+
+	perPage := min(max(limit*5, 30), 100)
+	forksPath, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "forks")
+	if err != nil {
+		return nil, err
+	}
+	forksPath.SetQuery("sort", "newest")
+	forksPath.SetQuery("per_page", fmt.Sprintf("%d", perPage))
+
+	var forks []restRepo
+	if err := client.REST(repo.RepoHost(), http.MethodGet, forksPath.String(), nil, &forks); err != nil {
+		return nil, err
+	}
+
+	for _, f := range forks {
+		addFork(f.toRepository(repo.RepoHost()))
+		if len(results) >= limit {
+			break
+		}
 	}
 
 	return results, nil
@@ -1025,8 +888,7 @@ func RepoMetadata(client *Client, repo ghrepo.Interface, input RepoMetadataInput
 	if input.Reviewers && input.TeamReviewers {
 		g.Go(func() error {
 			teams, err := OrganizationTeams(client, repo)
-			// TODO: better detection of non-org repos
-			if err != nil && !strings.Contains(err.Error(), errorResolvingOrganization) {
+			if err != nil && !isHTTPNotFoundOrNotOrg(err) {
 				err = fmt.Errorf("error fetching organization teams: %w", err)
 				return err
 			}
@@ -1098,41 +960,27 @@ type RepoProject struct {
 	ResourcePath string `json:"resourcePath"`
 }
 
-// RepoProjects fetches all open projects for a repository.
+// RepoProjects fetches all open classic projects for a repository via REST.
 func RepoProjects(client *Client, repo ghrepo.Interface) ([]RepoProject, error) {
-	type responseData struct {
-		Repository struct {
-			Projects struct {
-				Nodes    []RepoProject
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"projects(states: [OPEN], first: 100, orderBy: {field: NAME, direction: ASC}, after: $endCursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "projects")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("state", "open")
+	path.SetQuery("per_page", "100")
+
+	rawProjects, err := restPaginate[restProjectV1](client, repo.RepoHost(), path.String(), 0)
+	if err != nil {
+		return nil, err
 	}
 
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"endCursor": (*githubv4.String)(nil),
+	projects := make([]RepoProject, 0, len(rawProjects))
+	for _, p := range rawProjects {
+		projects = append(projects, p.toRepoProject())
 	}
-
-	var projects []RepoProject
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "RepositoryProjectList", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		projects = append(projects, query.Repository.Projects.Nodes...)
-		if !query.Repository.Projects.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Repository.Projects.PageInfo.EndCursor)
-	}
-
+	slices.SortFunc(projects, func(a, b RepoProject) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return projects, nil
 }
 
@@ -1233,53 +1081,27 @@ func (b AssignableBot) Name() string {
 
 func (b AssignableBot) sealedAssignableActor() {}
 
-// RepoAssignableUsers fetches all the assignable users for a repository
+// RepoAssignableUsers fetches all the assignable users for a repository via REST.
 func RepoAssignableUsers(client *Client, repo ghrepo.Interface) ([]AssignableUser, error) {
-	type responseData struct {
-		Repository struct {
-			AssignableUsers struct {
-				Nodes []struct {
-					ID    string
-					Login string
-					Name  string
-				}
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"assignableUsers(first: 100, after: $endCursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "assignees")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("per_page", "100")
+
+	rawUsers, err := restPaginate[restUser](client, repo.RepoHost(), path.String(), 0)
+	if err != nil {
+		return nil, err
 	}
 
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"endCursor": (*githubv4.String)(nil),
+	users := make([]AssignableUser, 0, len(rawUsers))
+	for _, u := range rawUsers {
+		users = append(users, AssignableUser{
+			id:    u.NodeID,
+			login: u.Login,
+			name:  u.Name,
+		})
 	}
-
-	var users []AssignableUser
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "RepositoryAssignableUsers", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, node := range query.Repository.AssignableUsers.Nodes {
-			user := AssignableUser{
-				id:    node.ID,
-				login: node.Login,
-				name:  node.Name,
-			}
-
-			users = append(users, user)
-		}
-		if !query.Repository.AssignableUsers.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Repository.AssignableUsers.PageInfo.EndCursor)
-	}
-
 	return users, nil
 }
 
@@ -1417,97 +1239,66 @@ type RepoLabel struct {
 	Name string
 }
 
-// RepoLabels fetches all the labels in a repository
+// RepoLabels fetches all the labels in a repository via REST.
 func RepoLabels(client *Client, repo ghrepo.Interface) ([]RepoLabel, error) {
-	type responseData struct {
-		Repository struct {
-			Labels struct {
-				Nodes    []RepoLabel
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"labels(first: 100, orderBy: {field: NAME, direction: ASC}, after: $endCursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "labels")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("per_page", "100")
+
+	rawLabels, err := restPaginate[restLabel](client, repo.RepoHost(), path.String(), 0)
+	if err != nil {
+		return nil, err
 	}
 
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"endCursor": (*githubv4.String)(nil),
+	labels := make([]RepoLabel, 0, len(rawLabels))
+	for _, l := range rawLabels {
+		labels = append(labels, RepoLabel{
+			ID:   l.NodeID,
+			Name: l.Name,
+		})
 	}
-
-	var labels []RepoLabel
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "RepositoryLabelList", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		labels = append(labels, query.Repository.Labels.Nodes...)
-		if !query.Repository.Labels.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Repository.Labels.PageInfo.EndCursor)
-	}
-
+	slices.SortFunc(labels, func(a, b RepoLabel) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return labels, nil
 }
 
 type RepoMilestone struct {
-	ID    string
-	Title string
+	ID     string
+	Title  string
+	Number int
 }
 
-// RepoMilestones fetches milestones in a repository
+// RepoMilestones fetches milestones in a repository via REST.
 func RepoMilestones(client *Client, repo ghrepo.Interface, state string) ([]RepoMilestone, error) {
-	type responseData struct {
-		Repository struct {
-			Milestones struct {
-				Nodes    []RepoMilestone
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"milestones(states: $states, first: 100, after: $endCursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	var states []githubv4.MilestoneState
 	switch state {
-	case "open":
-		states = []githubv4.MilestoneState{"OPEN"}
-	case "closed":
-		states = []githubv4.MilestoneState{"CLOSED"}
-	case "all":
-		states = []githubv4.MilestoneState{"OPEN", "CLOSED"}
+	case "open", "closed", "all":
 	default:
 		return nil, fmt.Errorf("invalid state: %s", state)
 	}
 
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"states":    states,
-		"endCursor": (*githubv4.String)(nil),
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "milestones")
+	if err != nil {
+		return nil, err
+	}
+	path.SetQuery("state", state)
+	path.SetQuery("per_page", "100")
+
+	rawMilestones, err := restPaginate[restMilestone](client, repo.RepoHost(), path.String(), 0)
+	if err != nil {
+		return nil, err
 	}
 
-	var milestones []RepoMilestone
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "RepositoryMilestoneList", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		milestones = append(milestones, query.Repository.Milestones.Nodes...)
-		if !query.Repository.Milestones.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Repository.Milestones.PageInfo.EndCursor)
+	milestones := make([]RepoMilestone, 0, len(rawMilestones))
+	for _, m := range rawMilestones {
+		milestones = append(milestones, RepoMilestone{
+			ID:     m.NodeID,
+			Title:  m.Title,
+			Number: m.Number,
+		})
 	}
-
 	return milestones, nil
 }
 
@@ -1532,7 +1323,7 @@ func v1Projects(client *Client, repo ghrepo.Interface) ([]RepoProject, error) {
 	g.Go(func() error {
 		var err error
 		orgProjects, err = OrganizationProjects(client, repo)
-		if err != nil && !strings.Contains(err.Error(), errorResolvingOrganization) {
+		if err != nil && !isHTTPNotFoundOrNotOrg(err) {
 			err = fmt.Errorf("error fetching organization projects (classic): %w", err)
 			return err
 		}
@@ -1637,38 +1428,26 @@ func CreateRepoTransformToV4(apiClient *Client, hostname string, method string, 
 	}, nil
 }
 
-// MapReposToIDs retrieves a set of IDs for the given set of repositories.
-// This is similar logic to RepoNetwork, but only fetches databaseId and does not
-// discover parent repositories.
+// GetRepoIDs retrieves a set of database IDs for the given set of repositories via REST.
 func GetRepoIDs(client *Client, host string, repositories []ghrepo.Interface) ([]int64, error) {
-	queries := make([]string, 0, len(repositories))
-	for i, repo := range repositories {
-		queries = append(queries, fmt.Sprintf(`
-			repo_%03d: repository(owner: %q, name: %q) {
-				databaseId
-			}
-		`, i, repo.RepoOwner(), repo.RepoName()))
-	}
-
-	query := fmt.Sprintf(`query MapRepositoryNames { %s }`, strings.Join(queries, ""))
-
-	graphqlResult := make(map[string]*struct {
-		DatabaseID int64 `json:"databaseId"`
-	})
-
-	if err := client.GraphQL(host, query, nil, &graphqlResult); err != nil {
-		return nil, fmt.Errorf("failed to look up repositories: %w", err)
-	}
-
-	repoKeys := make([]string, 0, len(repositories))
-	for k := range graphqlResult {
-		repoKeys = append(repoKeys, k)
-	}
-	sort.Strings(repoKeys)
-
 	result := make([]int64, len(repositories))
-	for i, k := range repoKeys {
-		result[i] = graphqlResult[k].DatabaseID
+	g, _ := errgroup.WithContext(context.Background())
+	g.SetLimit(10)
+
+	for i, repo := range repositories {
+		g.Go(func() error {
+			target := ghrepo.NewWithHost(repo.RepoOwner(), repo.RepoName(), host)
+			res, err := fetchRESTRepo(client, target)
+			if err != nil {
+				return fmt.Errorf("failed to look up repositories: %w", err)
+			}
+			result[i] = res.ID
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

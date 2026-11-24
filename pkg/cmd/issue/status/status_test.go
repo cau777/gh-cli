@@ -60,8 +60,8 @@ func TestIssueStatus(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{"login":"octocat"}}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"octocat"}`))
 	http.Register(
 		httpmock.GraphQL(`query IssueStatus\b`),
 		httpmock.FileResponse("./fixtures/issueStatus.json"))
@@ -91,8 +91,8 @@ func TestIssueStatus_blankSlate(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{"login":"octocat"}}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"octocat"}`))
 	http.Register(
 		httpmock.GraphQL(`query IssueStatus\b`),
 		httpmock.StringResponse(`
@@ -131,8 +131,8 @@ func TestIssueStatus_disabledIssues(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{"login":"octocat"}}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"octocat"}`))
 	http.Register(
 		httpmock.GraphQL(`query IssueStatus\b`),
 		httpmock.StringResponse(`

@@ -442,11 +442,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`
-					{ "data": {
-						"viewer": { "login": "MonaLisa" }
-					} }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "MonaLisa"}`))
 			},
 			wantsBrowse: "https://github.com/OWNER/REPO/issues/new?assignees=MonaLisa&body=",
 			wantsStderr: "Opening https://github.com/OWNER/REPO/issues/new in your browser.\n",
@@ -470,23 +467,15 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query RepositoryProjectList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "projects": {
-						"nodes": [
-							{ "name": "Cleanup", "id": "CLEANUPID", "resourcePath": "/OWNER/REPO/projects/1" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+					httpmock.StringResponse(`[
+						{ "name": "Cleanup", "node_id": "CLEANUPID", "html_url": "https://github.com/OWNER/REPO/projects/1" }
+					]`))
 				r.Register(
-					httpmock.GraphQL(`query OrganizationProjectList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "projects": {
-						"nodes": [
-							{ "name": "Triage", "id": "TRIAGEID", "resourcePath": "/orgs/ORG/projects/1"  }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }`))
+					httpmock.REST("GET", "orgs/OWNER/projects"),
+					httpmock.StringResponse(`[
+						{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
+					]`))
 				r.Register(
 					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 					httpmock.StringResponse(`
@@ -552,12 +541,11 @@ func Test_createRun(t *testing.T) {
 			name: "editor",
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true
+					}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -581,14 +569,13 @@ func Test_createRun(t *testing.T) {
 			name: "editor attachment reference is rewritten",
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -617,12 +604,11 @@ func Test_createRun(t *testing.T) {
 			name: "editor and template",
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"id": "REPOID",
-				"hasIssuesEnabled": true
-			} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true
+					}`))
 				r.Register(
 					httpmock.GraphQL(`query IssueTemplates\b`),
 					httpmock.StringResponse(`
@@ -699,14 +685,12 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -752,7 +736,7 @@ func Test_createRun(t *testing.T) {
 					case "What would you like to add?":
 						return prompter.IndexesFor(options, "Assignees")
 					case "Assignees":
-						return prompter.IndexesFor(options, "hubot", "MonaLisa (Mona Display Name)")
+						return prompter.IndexesFor(options, "hubot", "MonaLisa")
 					default:
 						return nil, fmt.Errorf("unexpected multi-select prompt: %s", message)
 					}
@@ -772,25 +756,18 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				r.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [
-								{ "login": "hubot", "id": "HUBOTID", "name": "" },
-								{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -814,12 +791,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true
+					}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.StringResponse(`
@@ -869,13 +845,12 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				// Issue types are fetched up front to power the interactive prompt.
 				r.Register(
 					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
@@ -915,12 +890,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true
+					}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.StringResponse(`
@@ -949,12 +923,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true
+					}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.StringResponse(`
@@ -990,12 +963,11 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true
+					}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.StringResponse(`
@@ -1055,14 +1027,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"shot.png"},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1088,14 +1059,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"docs/diagram.png"},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "diagram.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1121,14 +1091,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"shot.png"},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 4321,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 4321,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 4321, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1151,14 +1120,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"shot.png"},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "READ"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "pull": true }
+					}`))
 			},
 			wantsErr: "attaching files requires write access to the repository",
 		},
@@ -1172,13 +1140,12 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"shot.png"},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 			},
 			wantsErr: "could not determine which repository to attach files to",
 		},
@@ -1192,14 +1159,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"shot.png"},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 404, `{ "message": "Not Found" }`)
 				r.Exclude(t, httpmock.GraphQL(`mutation IssueCreate\b`))
 			},
@@ -1215,14 +1181,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"first.png", "second.png"},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "first.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				attachments.StubUpload(r, 1234, "second.png", 404, `{ "message": "Not Found" }`)
 				r.Register(
@@ -1248,14 +1213,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"first.png", "second.png"},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "first.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				attachments.StubUpload(r, 1234, "second.png", 404, `{ "message": "Not Found" }`)
 				r.Register(
@@ -1276,14 +1240,13 @@ func Test_createRun(t *testing.T) {
 			attach: []string{"clip.mp4"},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				r.Exclude(t, httpmock.REST("POST", "user-attachments/assets"))
 				r.Exclude(t, httpmock.GraphQL(`mutation IssueCreate\b`))
 			},
@@ -1300,14 +1263,13 @@ func Test_createRun(t *testing.T) {
 			host:   "acme.ghe.com",
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUploadToHost(t, r, "uploads.acme.ghe.com", 1234, "shot.png", 200, `{ "url": "https://acme.ghe.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1344,14 +1306,13 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1400,14 +1361,13 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": {
-							"id": "REPOID",
-							"databaseId": 1234,
-							"hasIssuesEnabled": true,
-							"viewerPermission": "WRITE"
-						} } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"node_id": "REPOID",
+						"id": 1234,
+						"has_issues": true,
+						"permissions": { "push": true }
+					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1538,12 +1498,11 @@ func TestIssueCreate(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"id": "REPOID",
-				"hasIssuesEnabled": true
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": true
+		}`),
 	)
 	http.Register(
 		httpmock.GraphQL(`mutation IssueCreate\b`),
@@ -1571,24 +1530,18 @@ func TestIssueCreate_recover(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"id": "REPOID",
-				"hasIssuesEnabled": true
-			} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": true
+		}`))
 	// Should only be one fetch of metadata.
 	http.Register(
-		httpmock.GraphQL(`query RepositoryLabelList\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": { "labels": {
-				"nodes": [
-					{ "name": "TODO", "id": "TODOID" },
-					{ "name": "bug", "id": "BUGID" }
-				],
-				"pageInfo": { "hasNextPage": false }
-			} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+		httpmock.StringResponse(`[
+			{ "name": "TODO", "node_id": "TODOID" },
+			{ "name": "bug", "node_id": "BUGID" }
+		]`))
 	http.Register(
 		httpmock.GraphQL(`mutation IssueCreate\b`),
 		httpmock.GraphQLMutation(`
@@ -1655,12 +1608,11 @@ func TestIssueCreate_nonLegacyTemplate(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"id": "REPOID",
-				"hasIssuesEnabled": true
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": true
+		}`),
 	)
 	http.Register(
 		httpmock.GraphQL(`query IssueTemplates\b`),
@@ -1718,12 +1670,11 @@ func TestIssueCreate_continueInBrowser(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"id": "REPOID",
-				"hasIssuesEnabled": true
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": true
+		}`),
 	)
 
 	pm := &prompter.PrompterMock{}
@@ -1766,49 +1717,26 @@ func TestIssueCreate_metadata(t *testing.T) {
 
 	http.StubIssueRepoInfoResponse("OWNER", "REPO")
 	http.Register(
-		httpmock.GraphQL(`query RepositoryLabelList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "labels": {
-			"nodes": [
-				{ "name": "TODO", "id": "TODOID" },
-				{ "name": "bug", "id": "BUGID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+		httpmock.StringResponse(`[
+			{ "name": "TODO", "node_id": "TODOID" },
+			{ "name": "bug", "node_id": "BUGID" }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "milestones": {
-			"nodes": [
-				{ "title": "GA", "id": "GAID" },
-				{ "title": "Big One.oh", "id": "BIGONEID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+		httpmock.StringResponse(`[
+			{ "title": "GA", "node_id": "GAID", "number": 1 },
+			{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query RepositoryProjectList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [
-				{ "name": "Cleanup", "id": "CLEANUPID" },
-				{ "name": "Roadmap", "id": "ROADMAPID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Cleanup", "node_id": "CLEANUPID" },
+			{ "name": "Roadmap", "node_id": "ROADMAPID" }
+		]`))
 	http.Register(
-		httpmock.GraphQL(`query OrganizationProjectList\b`),
-		httpmock.StringResponse(`
-		{	"data": { "organization": null },
-			"errors": [{
-				"type": "NOT_FOUND",
-				"path": [ "organization" ],
-				"message": "Could not resolve to an Organization with the login of 'OWNER'."
-			}]
-		}
-		`))
+		httpmock.REST("GET", "orgs/OWNER/projects"),
+		httpmock.StatusStringResponse(404, ""))
 	http.Register(
 		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 		httpmock.StringResponse(`
@@ -1875,12 +1803,11 @@ func TestIssueCreate_disabledIssues(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"id": "REPOID",
-				"hasIssuesEnabled": false
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": false
+		}`),
 	)
 
 	_, err := runCommand(http, true, `-t heres -b johnny`, nil)
@@ -1894,21 +1821,15 @@ func TestIssueCreate_AtMeAssignee(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`
-		{ "data": {
-			"viewer": { "login": "MonaLisa" }
-		} }
-		`),
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login": "MonaLisa"}`),
 	)
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"id": "REPOID",
-			"hasIssuesEnabled": true
-		} } }
-	`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": true
+		}`))
 	http.Register(
 		httpmock.GraphQL(`mutation IssueCreate\b`),
 		httpmock.GraphQLMutation(`
@@ -1945,13 +1866,11 @@ func TestIssueCreate_AtCopilotAssignee(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueRepositoryInfo\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"id": "REPOID",
-			"hasIssuesEnabled": true
-		} } }
-	`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{
+			"node_id": "REPOID",
+			"has_issues": true
+		}`))
 	http.Register(
 		httpmock.GraphQL(`mutation IssueCreate\b`),
 		httpmock.GraphQLMutation(`
@@ -1989,21 +1908,11 @@ func TestIssueCreate_projectsV2(t *testing.T) {
 
 	http.StubIssueRepoInfoResponse("OWNER", "REPO")
 	http.Register(
-		httpmock.GraphQL(`query RepositoryProjectList\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projects": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+		httpmock.StringResponse(`[]`))
 	http.Register(
-		httpmock.GraphQL(`query OrganizationProjectList\b`),
-		httpmock.StringResponse(`
-		{	"data": { "organization": { "projects": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
+		httpmock.REST("GET", "orgs/OWNER/projects"),
+		httpmock.StringResponse(`[]`))
 	http.Register(
 		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 		httpmock.StringResponse(`
@@ -2083,7 +1992,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg.StubIssueRepoInfoResponse("OWNER", "REPO")
 			reg.Register(
 				// ( is required to avoid matching projectsV2
-				httpmock.GraphQL(`projects\(`),
+				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 				// Simulate a GraphQL error to early exit the test.
 				httpmock.StatusStringResponse(500, ""),
 			)
@@ -2119,7 +2028,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg := &httpmock.Registry{}
 			reg.StubIssueRepoInfoResponse("OWNER", "REPO")
 			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.GraphQL(`projects\(`))
+			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 
 			_, cmdTeardown := run.Stub()
 			defer cmdTeardown(t)
@@ -2153,7 +2062,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg := &httpmock.Registry{}
 			reg.Register(
 				// ( is required to avoid matching projectsV2
-				httpmock.GraphQL(`projects\(`),
+				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 				// Simulate a GraphQL error to early exit the test.
 				httpmock.StatusStringResponse(500, ""),
 			)
@@ -2187,7 +2096,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 
 			reg := &httpmock.Registry{}
 			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.GraphQL(`projects\(`))
+			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 
 			_, cmdTeardown := run.Stub()
 			defer cmdTeardown(t)

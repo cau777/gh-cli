@@ -30,4 +30,5 @@ when running in REST-only mode.
 
 ## Shared Behavioral Caveats
 
-*Tracked as shared helpers and commands are migrated.*
+- **`RepoFindForks` (`api/queries_repo.go`)**: GitHub's REST `GET /repos/{owner}/{repo}/forks` endpoint has no `affiliations=OWNER` filter, so `RepoFindForks` checks for a fork at the viewer's own login (`GET /repos/{viewer}/{repo}`) plus the first 100 forks sorted by newest instead of exhaustive owner-affiliated GraphQL pagination.
+- **`RepoAssignableUsers` (`api/queries_repo.go`)**: GitHub's REST `GET /repos/{owner}/{repo}/assignees` endpoint returns only `login` and `node_id` (not the user's display `name`), so interactive assignee/reviewer prompts and completion entries display logins without display names.

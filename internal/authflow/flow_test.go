@@ -22,7 +22,7 @@ func Test_getViewer_leavesUserAgent(t *testing.T) {
 			return &http.Response{
 				StatusCode: 200,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(bytes.NewBufferString(`{"data":{"viewer":{"login":"monalisa"}}}`)),
+				Body:       io.NopCloser(bytes.NewBufferString(`{"login":"monalisa"}`)),
 				Request:    req,
 			}, nil
 		}},

@@ -201,8 +201,8 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"id":"USERID"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"USERID"}`))
 				r.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.GraphQLMutation(
@@ -246,8 +246,8 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"id":"USERID"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"USERID"}`))
 				r.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.GraphQLMutation(
@@ -311,8 +311,8 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"id":"USERID"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"USERID"}`))
 				r.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.GraphQLMutation(
@@ -376,8 +376,8 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"id":"USERID"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"USERID"}`))
 				r.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.GraphQLMutation(
@@ -442,8 +442,8 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"id":"USERID"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"node_id":"USERID"}`))
 				r.Register(
 					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
 					httpmock.GraphQLMutation(

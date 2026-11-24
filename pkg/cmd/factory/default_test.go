@@ -178,29 +178,19 @@ func Test_SmartBaseRepo(t *testing.T) {
 			tty:        true,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("RepositoryNetwork"),
-					httpmock.StringResponse(`
-						{
-						  "data": {
-						    "viewer": {
-						      "login": "someone"
-						    },
-						    "repo_000": {
-						      "id": "MDEwOlJlcG9zaXRvcnkxMDM3MjM2Mjc=",
-						      "name": "repo",
-						      "owner": {
-						        "login": "owner"
-						      },
-						      "viewerPermission": "READ",
-						      "defaultBranchRef": {
-						        "name": "master"
-						      },
-						      "isPrivate": false,
-						      "parent": null
-						    }
-						  }
-						}
-					`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"someone"}`))
+				reg.Register(
+					httpmock.REST("GET", "repos/owner/repo"),
+					httpmock.StringResponse(`{
+						"node_id": "MDEwOlJlcG9zaXRvcnkxMDM3MjM2Mjc=",
+						"name": "repo",
+						"owner": {"login": "owner"},
+						"permissions": {"pull": true},
+						"default_branch": "master",
+						"private": false,
+						"parent": null
+					}`))
 			},
 		},
 	}

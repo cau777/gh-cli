@@ -250,8 +250,8 @@ func Test_setRun_env(t *testing.T) {
 			name: "create env variable",
 			opts: &SetOptions{},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL(`query MapRepositoryNames\b`),
-					httpmock.StringResponse(`{"data":{"repo_0001":{"databaseId":1}}}`))
+				reg.Register(httpmock.REST("GET", "repos/owner/repo"),
+					httpmock.StringResponse(`{"id":1}`))
 				reg.Register(httpmock.REST("POST", "repositories/1/environments/release/variables"),
 					httpmock.StatusStringResponse(201, `{}`))
 			},
@@ -260,8 +260,8 @@ func Test_setRun_env(t *testing.T) {
 			name: "update env variable",
 			opts: &SetOptions{},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL(`query MapRepositoryNames\b`),
-					httpmock.StringResponse(`{"data":{"repo_0001":{"databaseId":1}}}`))
+				reg.Register(httpmock.REST("GET", "repos/owner/repo"),
+					httpmock.StringResponse(`{"id":1}`))
 				reg.Register(httpmock.REST("POST", "repositories/1/environments/release/variables"),
 					httpmock.StatusStringResponse(409, `{}`))
 				reg.Register(httpmock.REST("PATCH", "repositories/1/environments/release/variables/cool_variable"),
@@ -353,8 +353,10 @@ func Test_setRun_org(t *testing.T) {
 				RepositoryNames: []string{"birkin", "UmbrellaCorporation/wesker"},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL(`query MapRepositoryNames\b`),
-					httpmock.StringResponse(`{"data":{"repo_0001":{"databaseId":1},"repo_0002":{"databaseId":2}}}`))
+				reg.Register(httpmock.REST("GET", "repos/UmbrellaCorporation/birkin"),
+					httpmock.StringResponse(`{"id":1}`))
+				reg.Register(httpmock.REST("GET", "repos/UmbrellaCorporation/wesker"),
+					httpmock.StringResponse(`{"id":2}`))
 				reg.Register(httpmock.REST("POST", "orgs/UmbrellaCorporation/actions/variables"),
 					httpmock.StatusStringResponse(201, `{}`))
 			},
@@ -368,8 +370,10 @@ func Test_setRun_org(t *testing.T) {
 				RepositoryNames: []string{"birkin", "UmbrellaCorporation/wesker"},
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL(`query MapRepositoryNames\b`),
-					httpmock.StringResponse(`{"data":{"repo_0001":{"databaseId":1},"repo_0002":{"databaseId":2}}}`))
+				reg.Register(httpmock.REST("GET", "repos/UmbrellaCorporation/birkin"),
+					httpmock.StringResponse(`{"id":1}`))
+				reg.Register(httpmock.REST("GET", "repos/UmbrellaCorporation/wesker"),
+					httpmock.StringResponse(`{"id":2}`))
 				reg.Register(httpmock.REST("POST", "orgs/UmbrellaCorporation/actions/variables"),
 					httpmock.StatusStringResponse(409, `{}`))
 				reg.Register(httpmock.REST("PATCH", "orgs/UmbrellaCorporation/actions/variables/cool_variable"),

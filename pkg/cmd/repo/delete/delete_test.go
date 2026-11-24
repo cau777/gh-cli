@@ -236,8 +236,8 @@ func Test_deleteRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"OWNER"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO"),
 					httpmock.StringResponse(`{"private":false,"fork":false,"forks_count":0}`))

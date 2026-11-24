@@ -17,61 +17,41 @@ func TestRequestableReviewersForCompletion(t *testing.T) {
 	}{
 		{
 			name:              "when users and teams are both available, both are listed",
-			expectedReviewers: []string{"MonaLisa\tMona Display Name", "OWNER/core", "OWNER/robots", "hubot"},
+			expectedReviewers: []string{"MonaLisa", "OWNER/core", "OWNER/robots", "hubot"},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [
-								{ "login": "hubot", "id": "HUBOTID", "name": "" },
-								{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "organization": { "teams": {
-							"nodes": [
-								{ "slug": "core", "id": "COREID" },
-								{ "slug": "robots", "id": "ROBOTID" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "core", "node_id": "COREID" },
+						{ "slug": "robots", "node_id": "ROBOTID" }
+					]`))
 			},
 		},
 		{
 			name:              "when users are available but teams aren't, users are listed",
-			expectedReviewers: []string{"MonaLisa\tMona Display Name", "hubot"},
+			expectedReviewers: []string{"MonaLisa", "hubot"},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [
-								{ "login": "hubot", "id": "HUBOTID", "name": "" },
-								{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "organization": { "teams": {
-							"nodes": [],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[]`))
 			},
 		},
 		{
@@ -79,27 +59,17 @@ func TestRequestableReviewersForCompletion(t *testing.T) {
 			expectedReviewers: []string{"OWNER/core", "OWNER/robots"},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "organization": { "teams": {
-							"nodes": [
-								{ "slug": "core", "id": "COREID" },
-								{ "slug": "robots", "id": "ROBOTID" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "core", "node_id": "COREID" },
+						{ "slug": "robots", "node_id": "ROBOTID" }
+					]`))
 			},
 		},
 	}

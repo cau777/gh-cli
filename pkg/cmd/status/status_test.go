@@ -96,8 +96,8 @@ func TestStatusRun(t *testing.T) {
 			name: "nothing",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.GraphQL("AssignedSearch"),
 					httpmock.StringResponse(`{"data": { "assignments": {"nodes": [] }, "reviewRequested": {"nodes": []}}}`))
@@ -115,8 +115,8 @@ func TestStatusRun(t *testing.T) {
 			name: "notifications 404 is tolerated",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.GraphQL("AssignedSearch"),
 					httpmock.StringResponse(`{"data": { "assignments": {"nodes": [] }, "reviewRequested": {"nodes": []}}}`))
@@ -134,8 +134,8 @@ func TestStatusRun(t *testing.T) {
 			name: "something",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/110"),
 					httpmock.StringResponse(`{"body":"hello @jillvalentine how are you"}`))
@@ -168,8 +168,8 @@ func TestStatusRun(t *testing.T) {
 			name: "exclude a repository",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/110"),
 					httpmock.StringResponse(`{"body":"hello @jillvalentine how are you"}`))
@@ -203,8 +203,8 @@ func TestStatusRun(t *testing.T) {
 			name: "exclude repositories",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/vilmibm/gh-screensaver/issues/comments/10"),
 					httpmock.StringResponse(`{"body":"a message for @jillvalentine"}`))
@@ -229,8 +229,8 @@ func TestStatusRun(t *testing.T) {
 			name: "filter to an org",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/110"),
 					httpmock.StringResponse(`{"body":"hello @jillvalentine how are you"}`))
@@ -259,8 +259,8 @@ func TestStatusRun(t *testing.T) {
 			name: "forbidden errors",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/110"),
 					func(req *http.Request) (*http.Response, error) {
@@ -319,8 +319,8 @@ func TestStatusRun(t *testing.T) {
 			name: "not found errors",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/110"),
 					httpmock.StringResponse(`{"body":"hello @jillvalentine how are you"}`))
@@ -376,8 +376,8 @@ func TestStatusRun(t *testing.T) {
 			name: "notification errors",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/110"),
 					httpmock.StatusStringResponse(429, `{
@@ -416,8 +416,8 @@ func TestStatusRun(t *testing.T) {
 			name: "search errors",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("UserCurrent"),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "jillvalentine"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
 					httpmock.GraphQL("AssignedSearch"),
 					httpmock.StringResponse(`{

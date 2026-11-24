@@ -26,8 +26,8 @@ func Test_listOrgs(t *testing.T) {
 			},
 			httpStub: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "octocat"}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 				reg.Register(
 					httpmock.GraphQL(`query OrganizationList\b`),
 					httpmock.GraphQLQuery(`{"data":{}}`, func(query string, vars map[string]any) {
@@ -48,8 +48,8 @@ func Test_listOrgs(t *testing.T) {
 			},
 			httpStub: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "octocat"}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"octocat"}`))
 				r.Register(
 					httpmock.GraphQL(`query OrganizationList\b`),
 					httpmock.GraphQLQuery(`{"data":{}}`, func(query string, vars map[string]any) {

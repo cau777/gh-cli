@@ -627,8 +627,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -674,8 +674,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -721,8 +721,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				mockRetrieveProjects(t, reg)
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreate\b`),
@@ -785,8 +785,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -833,8 +833,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "monalisa"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "monalisa"}`))
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/forks"),
 					httpmock.RESTPayload(201, `
@@ -1038,27 +1038,17 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryLabelList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "labels": {
-						"nodes": [
-							{ "name": "TODO", "id": "TODOID" },
-							{ "name": "bug", "id": "BUGID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[
+						{ "name": "TODO", "node_id": "TODOID" },
+						{ "name": "bug", "node_id": "BUGID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "milestones": {
-						"nodes": [
-							{ "title": "GA", "id": "GAID" },
-							{ "title": "Big One.oh", "id": "BIGONEID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+					httpmock.StringResponse(`[
+						{ "title": "GA", "node_id": "GAID", "number": 1 },
+						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+					]`))
 				mockRetrieveProjects(t, reg)
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreate\b`),
@@ -1140,8 +1130,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git( .+)? log( .+)? origin/master\.\.\.feature`, 0, "")
@@ -1173,8 +1163,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.StubRepoResponse("OWNER", "REPO")
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				mockRetrieveProjects(t, reg)
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
@@ -1257,18 +1247,13 @@ func Test_createRun(t *testing.T) {
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [
-								{ "login": "jillValentine", "id": "JILLID", "name": "Jill Valentine" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "jillValentine", "node_id": "JILLID" }
+					]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
 					httpmock.GraphQLMutation(`
@@ -2151,52 +2136,32 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID", "name": "" },
-							{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryLabelList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "labels": {
-						"nodes": [
-							{ "name": "TODO", "id": "TODOID" },
-							{ "name": "bug", "id": "BUGID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[
+						{ "name": "TODO", "node_id": "TODOID" },
+						{ "name": "bug", "node_id": "BUGID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "milestones": {
-						"nodes": [
-							{ "title": "GA", "id": "GAID" },
-							{ "title": "Big One.oh", "id": "BIGONEID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+					httpmock.StringResponse(`[
+						{ "title": "GA", "node_id": "GAID", "number": 1 },
+						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "teams": {
-						"nodes": [
-							{ "slug": "core", "id": "COREID" },
-							{ "slug": "robots", "id": "ROBOTID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "core", "node_id": "COREID" },
+						{ "slug": "robots", "node_id": "ROBOTID" }
+					]`))
 			},
 			expectedOutputs: []string{
 				"Would have created a Pull Request with:",
@@ -2234,52 +2199,32 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID", "name": "" },
-							{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryLabelList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "labels": {
-						"nodes": [
-							{ "name": "TODO", "id": "TODOID" },
-							{ "name": "bug", "id": "BUGID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[
+						{ "name": "TODO", "node_id": "TODOID" },
+						{ "name": "bug", "node_id": "BUGID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryMilestoneList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "milestones": {
-						"nodes": [
-							{ "title": "GA", "id": "GAID" },
-							{ "title": "Big One.oh", "id": "BIGONEID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
+					httpmock.StringResponse(`[
+						{ "title": "GA", "node_id": "GAID", "number": 1 },
+						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "teams": {
-						"nodes": [
-							{ "slug": "core", "id": "COREID" },
-							{ "slug": "robots", "id": "ROBOTID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "core", "node_id": "COREID" },
+						{ "slug": "robots", "node_id": "ROBOTID" }
+					]`))
 			},
 			expectedOutputs: []string{
 				`Would have created a Pull Request with:`,
@@ -2325,32 +2270,20 @@ func Test_createRun_GHES(t *testing.T) {
 						} } } }`,
 						func(input map[string]any) {}))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [
-								{ "login": "hubot", "id": "HUBOTID" },
-								{ "login": "MonaLisa", "id": "MONAID" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`
-						{ "data": { "viewer": { "login": "monalisa" } } }
-					`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "monalisa"}`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "teams": {
-						"nodes": [
-							{ "slug": "core", "id": "COREID" },
-							{ "slug": "robots", "id": "ROBOTID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "core", "node_id": "COREID" },
+						{ "slug": "robots", "node_id": "ROBOTID" }
+					]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
 					httpmock.GraphQLMutation(`
@@ -2388,24 +2321,17 @@ func Test_createRun_GHES(t *testing.T) {
 						} } } }`,
 						func(input map[string]any) {}))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "assignableUsers": {
-							"nodes": [
-								{ "login": "hubot", "id": "HUBOTID" },
-								{ "login": "MonaLisa", "id": "MONAID" }
-							],
-							"pageInfo": { "hasNextPage": false }
-						} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`
-						{ "data": { "viewer": { "login": "monalisa" } } }
-					`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "monalisa"}`))
 				reg.Exclude(
 					t,
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
+					httpmock.REST("GET", "orgs/OWNER/teams"),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
@@ -2463,7 +2389,7 @@ func Test_createRun_GHES(t *testing.T) {
 					case "What would you like to add?":
 						return prompter.IndexesFor(options, "Reviewers")
 					case "Reviewers":
-						return prompter.IndexesFor(options, "MonaLisa (Mona Display Name)", "OWNER/core")
+						return prompter.IndexesFor(options, "MonaLisa", "OWNER/core")
 					default:
 						return nil, fmt.Errorf("unexpected multi-select prompt: %s", message)
 					}
@@ -2485,34 +2411,24 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data": {"viewer": {"login": "OWNER"} } }`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
 					httpmock.GraphQL(`query PullRequestTemplates\b`),
 					httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryAssignableUsers\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "assignableUsers": {
-						"nodes": [
-							{ "login": "hubot", "id": "HUBOTID", "name": "" },
-							{ "login": "MonaLisa", "id": "MONAID", "name": "Mona Display Name" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
+					httpmock.StringResponse(`[
+						{ "login": "hubot", "node_id": "HUBOTID" },
+						{ "login": "MonaLisa", "node_id": "MONAID" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationTeamList\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "teams": {
-						"nodes": [
-							{ "slug": "core", "id": "COREID" },
-							{ "slug": "robots", "id": "ROBOTID" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }
-					`))
+					httpmock.REST("GET", "orgs/OWNER/teams"),
+					httpmock.StringResponse(`[
+						{ "slug": "core", "node_id": "COREID" },
+						{ "slug": "robots", "node_id": "ROBOTID" }
+					]`))
 				reg.Register(
 					httpmock.GraphQL(`mutation PullRequestCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -2896,7 +2812,7 @@ func Test_generateCompareURL(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				// Ensure no v1 projects are requestd
 				// ( is required to avoid matching projectsV2
-				reg.Exclude(t, httpmock.GraphQL(`projects\(`))
+				reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 				reg.Register(
 					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 					httpmock.StringResponse(`
@@ -2946,23 +2862,13 @@ func Test_generateCompareURL(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				// v1 project query responses
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryProjectList\b`),
-					httpmock.StringResponse(`
-							{ "data": { "repository": { "projects": {
-								"nodes": [
-									{ "name": "ProjectV1Title", "id": "PROJECTV1ID", "resourcePath": "/OWNER/REPO/projects/1" }
-								],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
+					httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+					httpmock.StringResponse(`[
+						{ "name": "ProjectV1Title", "node_id": "PROJECTV1ID", "html_url": "https://github.com/OWNER/REPO/projects/1" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationProjectList\b`),
-					httpmock.StringResponse(`
-										{ "data": { "organization": { "projects": {
-											"nodes": [],
-											"pageInfo": { "hasNextPage": false }
-										} } } }
-										`))
+					httpmock.REST("GET", "orgs/OWNER/projects"),
+					httpmock.StringResponse(`[]`))
 				// v2 project query responses
 				reg.Register(
 					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
@@ -3020,16 +2926,11 @@ func Test_generateCompareURL(t *testing.T) {
 
 func mockRetrieveProjects(_ *testing.T, reg *httpmock.Registry) {
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryProjectList\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": { "projects": {
-					"nodes": [
-						{ "name": "Cleanup", "id": "CLEANUPID", "resourcePath": "/OWNER/REPO/projects/1" },
-						{ "name": "Roadmap", "id": "ROADMAPID", "resourcePath": "/OWNER/REPO/projects/2" }
-					],
-					"pageInfo": { "hasNextPage": false }
-				} } } }
-				`))
+		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Cleanup", "node_id": "CLEANUPID", "html_url": "https://github.com/OWNER/REPO/projects/1" },
+			{ "name": "Roadmap", "node_id": "ROADMAPID", "html_url": "https://github.com/OWNER/REPO/projects/2" }
+		]`))
 	reg.Register(
 		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
 		httpmock.StringResponse(`
@@ -3042,15 +2943,10 @@ func mockRetrieveProjects(_ *testing.T, reg *httpmock.Registry) {
 				} } } }
 				`))
 	reg.Register(
-		httpmock.GraphQL(`query OrganizationProjectList\b`),
-		httpmock.StringResponse(`
-				{ "data": { "organization": { "projects": {
-					"nodes": [
-						{ "name": "Triage", "id": "TRIAGEID", "resourcePath": "/orgs/ORG/projects/1" }
-					],
-					"pageInfo": { "hasNextPage": false }
-				} } } }
-				`))
+		httpmock.REST("GET", "orgs/OWNER/projects"),
+		httpmock.StringResponse(`[
+			{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
+		]`))
 	reg.Register(
 		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
 		httpmock.StringResponse(`
@@ -3085,7 +2981,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
 			reg.Register(
 				// ( is required to avoid matching projectsV2
-				httpmock.GraphQL(`projects\(`),
+				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 				// Simulate a GraphQL error to early exit the test.
 				httpmock.StatusStringResponse(500, ""),
 			)
@@ -3141,7 +3037,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg := &httpmock.Registry{}
 			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
 			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.GraphQL(`projects\(`))
+			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 
 			cs, cmdTeardown := run.Stub()
 			defer cmdTeardown(t)
@@ -3208,7 +3104,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 
 			reg.Register(
 				// ( is required to avoid matching projectsV2
-				httpmock.GraphQL(`projects\(`),
+				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 				// Simulate a GraphQL error to early exit the test.
 				httpmock.StatusStringResponse(500, ""),
 			)
@@ -3315,7 +3211,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			)
 
 			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.GraphQL(`projects\(`))
+			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 
 			ios, _, _, _ := iostreams.Test()
 			ios.SetStdinTTY(true)
@@ -3401,7 +3297,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
 			reg.Register(
 				// ( is required to avoid matching projectsV2
-				httpmock.GraphQL(`projects\(`),
+				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 				// Simulate a GraphQL error to early exit the test.
 				httpmock.StatusStringResponse(500, ""),
 			)
@@ -3459,7 +3355,7 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg := &httpmock.Registry{}
 			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
 			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.GraphQL(`projects\(`))
+			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 
 			cs, cmdTeardown := run.Stub()
 			defer cmdTeardown(t)

@@ -253,8 +253,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.JSONResponse(aWorkflow),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{ "data": { "repository": { "defaultBranchRef": { "name": "trunk" } } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"default_branch":"trunk"}`),
 				)
 			},
 			wantOut: "Opening https://github.com/OWNER/REPO/blob/trunk/.github/workflows/flow.yml in your browser.\n",

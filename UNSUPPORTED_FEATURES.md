@@ -21,7 +21,8 @@ when running in REST-only mode.
 
 ## Issues
 
-*Tracked as Issue commands are migrated.*
+- **`gh issue list`, `gh issue view`, `gh issue status` `--json` fields**: Passing any of `projectCards`, `projectItems`, `closedByPullRequestsReferences`, or `isPinned` with `--json` returns `not all features are supported`. Default non-`--json` views omit those fields gracefully.
+- **Comment moderation metadata (`gh issue view`)**: REST issue comment endpoints do not expose `isMinimized` or `minimizedReason`, so minimized-comment badges are not rendered.
 
 ## Repositories & Releases
 

@@ -406,27 +406,21 @@ func TestNewCmdComment(t *testing.T) {
 
 			reg := &httpmock.Registry{}
 			defer reg.Verify(t)
-			var lookupQuery string
+			fetchedRepo := false
 			if checksQuery {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					func(req *http.Request) (*http.Response, error) {
-						body, err := io.ReadAll(req.Body)
-						require.NoError(t, err)
-						lookupQuery = string(body)
-						return httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{
-							"id": "ISSUE-ID",
-							"number": 1,
-							"url": "https://github.com/OWNER/REPO/issues/1",
-							"repository": {
-								"id": "R_kgDOAA",
-								"name": "REPO",
-								"nameWithOwner": "OWNER/REPO",
-								"databaseId": 42
-							}
-						}}}}`)(req)
-					},
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/1"),
+					httpmock.StringResponse(`{"node_id":"ISSUE-ID","number":1,"html_url":"https://github.com/OWNER/REPO/issues/1"}`),
 				)
+				if tt.queryWants != "" {
+					reg.Register(
+						httpmock.REST("GET", "repos/OWNER/REPO"),
+						func(req *http.Request) (*http.Response, error) {
+							fetchedRepo = true
+							return httpmock.StringResponse(`{"id":42,"node_id":"R_kgDOAA","name":"REPO","full_name":"OWNER/REPO"}`)(req)
+						},
+					)
+				}
 			}
 
 			f := &cmdutil.Factory{
@@ -481,12 +475,7 @@ func TestNewCmdComment(t *testing.T) {
 			if checksQuery {
 				_, _, err := gotOpts.RetrieveCommentable()
 				require.NoError(t, err)
-				if tt.queryWants != "" {
-					assert.Contains(t, lookupQuery, tt.queryWants)
-				}
-				if tt.queryOmits != "" {
-					assert.NotContains(t, lookupQuery, tt.queryOmits)
-				}
+				assert.Equal(t, tt.queryWants != "", fetchedRepo)
 			}
 		})
 	}

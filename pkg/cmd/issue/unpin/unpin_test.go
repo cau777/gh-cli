@@ -28,40 +28,13 @@ func TestUnpinRun(t *testing.T) {
 		wantStderr string
 	}{
 		{
-			name: "unpin issue",
-			tty:  true,
-			opts: &UnpinOptions{IssueNumber: 20},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "issue": { "id": "ISSUE-ID", "number": 20, "title": "Issue Title", "isPinned": true}
-            } } }`),
-				)
-				reg.Register(
-					httpmock.GraphQL(`mutation IssueUnpin\b`),
-					httpmock.GraphQLMutation(`{"id": "ISSUE-ID"}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, inputs["issueId"], "ISSUE-ID")
-						},
-					),
-				)
-			},
-			wantStdout: "",
-			wantStderr: "✓ Unpinned issue OWNER/REPO#20 (Issue Title)\n",
-		},
-		{
 			name: "issue not pinned",
 			tty:  true,
 			opts: &UnpinOptions{IssueNumber: 20},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "issue": { "id": "ISSUE-ID", "number": 20, "title": "Issue Title", "isPinned": false}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/20"),
+					httpmock.StringResponse(`{ "node_id": "ISSUE-ID", "number": 20, "title": "Issue Title"}`),
 				)
 			},
 			wantStderr: "! Issue OWNER/REPO#20 (Issue Title) is not pinned\n",

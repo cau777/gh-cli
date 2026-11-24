@@ -92,17 +92,11 @@ func TestFindIssuesOrPRs(t *testing.T) {
 			baseRepo:     ghrepo.New("OWNER", "REPO"),
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"hasIssuesEnabled": true,
-						"issue":{"number":1}
-					}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/1"),
+					httpmock.StringResponse(`{"number":1}`))
 				r.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-							"hasIssuesEnabled": true,
-							"issue":{"number":2}
-						}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/2"),
+					httpmock.StringResponse(`{"number":2}`))
 			},
 			wantIssueNumbers: []int{1, 2},
 		},
@@ -112,13 +106,10 @@ func TestFindIssuesOrPRs(t *testing.T) {
 			baseRepo:     ghrepo.New("OWNER", "REPO"),
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"hasIssuesEnabled": true,
-						"issue":{"number":1}
-					}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/1"),
+					httpmock.StringResponse(`{"number":1}`))
 				r.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/2"),
 					httpmock.StatusStringResponse(500, "internal server error"))
 			},
 			wantErr: true,

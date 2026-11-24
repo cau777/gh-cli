@@ -82,6 +82,9 @@ func statusRun(opts *StatusOptions) error {
 		Fields:   defaultFields,
 	}
 	if opts.Exporter != nil {
+		if err := api.CheckUnsupportedIssueJSONFields(opts.Exporter.Fields()); err != nil {
+			return err
+		}
 		options.Fields = opts.Exporter.Fields()
 	}
 	issuePayload, err := api.IssueStatus(apiClient, baseRepo, options)

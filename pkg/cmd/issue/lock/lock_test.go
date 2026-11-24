@@ -238,11 +238,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -263,12 +260,8 @@ func Test_runLock(t *testing.T) {
 			state: Lock,
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "title": "traverse the library"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -301,12 +294,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "title": "traverse the library"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -327,13 +316,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation UnlockLockable\b`),
 					httpmock.StringResponse(`
@@ -353,13 +337,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation UnlockLockable\b`),
 					httpmock.StringResponse(`
@@ -379,12 +358,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "title": "traverse the library"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -405,13 +380,8 @@ func Test_runLock(t *testing.T) {
 			tty: true,
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation UnlockLockable\b`),
 					httpmock.StringResponse(`
@@ -448,13 +418,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "Issue" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 			},
 			wantErr: "already locked",
 		},
@@ -468,11 +433,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -493,12 +455,8 @@ func Test_runLock(t *testing.T) {
 			state: Lock,
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -529,12 +487,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -555,12 +509,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation LockLockable\b`),
 					httpmock.StringResponse(`
@@ -579,13 +529,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation UnlockLockable\b`),
 					httpmock.StringResponse(`
@@ -605,13 +550,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation UnlockLockable\b`),
 					httpmock.StringResponse(`
@@ -633,13 +573,8 @@ func Test_runLock(t *testing.T) {
 			tty: true,
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
 					httpmock.GraphQL(`mutation UnlockLockable\b`),
 					httpmock.StringResponse(`
@@ -676,13 +611,8 @@ func Test_runLock(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"number": 451,
-							"locked": true,
-							"title": "traverse the library",
-							"__typename": "PullRequest" }}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
+					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 			},
 			wantErr: "already locked",
 		},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -118,13 +119,19 @@ func runCommand(rt http.RoundTripper, isTTY bool, cli string) (*test.CmdOut, err
 	}, err
 }
 
+const restIssueListFixture = `[
+	{"number": 1, "title": "number won", "html_url": "https://wow.com", "updated_at": "2022-08-24T22:01:12Z", "labels": [{"name": "label"}]},
+	{"number": 2, "title": "number too", "html_url": "https://wow.com", "updated_at": "2022-07-20T19:01:12Z", "labels": [{"name": "label"}]},
+	{"number": 4, "title": "number fore", "html_url": "https://wow.com", "updated_at": "2020-01-26T19:01:12Z", "labels": [{"name": "label"}]}
+]`
+
 func TestIssueList_nontty(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueList\b`),
-		httpmock.FileResponse("./fixtures/issueList.json"))
+		httpmock.REST("GET", "repos/OWNER/REPO/issues"),
+		httpmock.StringResponse(restIssueListFixture))
 
 	output, err := runCommand(http, false, "")
 	if err != nil {
@@ -144,8 +151,8 @@ func TestIssueList_tty(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueList\b`),
-		httpmock.FileResponse("./fixtures/issueList.json"))
+		httpmock.REST("GET", "repos/OWNER/REPO/issues"),
+		httpmock.StringResponse(restIssueListFixture))
 
 	output, err := runCommand(http, true, "")
 	if err != nil {
@@ -169,17 +176,14 @@ func TestIssueList_tty_withFlags(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueList\b`),
-		httpmock.GraphQLQuery(`
-		{ "data": {	"repository": {
-			"hasIssuesEnabled": true,
-			"issues": { "nodes": [] }
-		} } }`, func(_ string, params map[string]any) {
-			assert.Equal(t, "probablyCher", params["assignee"].(string))
-			assert.Equal(t, "foo", params["author"].(string))
-			assert.Equal(t, "me", params["mention"].(string))
-			assert.Equal(t, []any{"OPEN"}, params["states"].([]any))
-		}))
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/issues", url.Values{
+			"assignee":  {"probablyCher"},
+			"creator":   {"foo"},
+			"mentioned": {"me"},
+			"state":     {"open"},
+			"per_page":  {"100"},
+		}),
+		httpmock.StringResponse(`[]`))
 
 	output, err := runCommand(http, true, "-a probablyCher -s open -A foo --mention me")
 	assert.EqualError(t, err, "no issues match your search in OWNER/REPO")
@@ -193,14 +197,12 @@ func TestIssueList_tty_withAppFlag(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueList\b`),
-		httpmock.GraphQLQuery(`
-		{ "data": {	"repository": {
-			"hasIssuesEnabled": true,
-			"issues": { "nodes": [] }
-		} } }`, func(_ string, params map[string]any) {
-			assert.Equal(t, "app/dependabot", params["author"].(string))
-		}))
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/issues", url.Values{
+			"creator":  {"app/dependabot"},
+			"state":    {"open"},
+			"per_page": {"100"},
+		}),
+		httpmock.StringResponse(`[]`))
 
 	output, err := runCommand(http, true, "--app dependabot")
 	assert.EqualError(t, err, "no issues match your search in OWNER/REPO")
@@ -225,11 +227,8 @@ func TestIssueList_disabledIssues(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueList\b`),
-		httpmock.StringResponse(`
-			{ "data": {	"repository": {
-				"hasIssuesEnabled": false
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues"),
+		httpmock.StatusStringResponse(410, `{"message": "Issues are disabled for this repo"}`),
 	)
 
 	_, err := runCommand(http, true, "")
@@ -308,10 +307,9 @@ func TestIssueList_web(t *testing.T) {
 
 func Test_issueList(t *testing.T) {
 	type args struct {
-		detector fd.Detector
-		repo     ghrepo.Interface
-		filters  prShared.FilterOptions
-		limit    int
+		repo    ghrepo.Interface
+		filters prShared.FilterOptions
+		limit   int
 	}
 	tests := []struct {
 		name      string
@@ -331,29 +329,18 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueList\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {	"repository": {
-						"hasIssuesEnabled": true,
-						"issues": { "nodes": [] }
-					} } }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner":  "OWNER",
-							"repo":   "REPO",
-							"limit":  float64(30),
-							"states": []any{"OPEN"},
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "repos/OWNER/REPO/issues", url.Values{
+						"per_page": {"100"},
+						"state":    {"open"},
+					}),
+					httpmock.StringResponse(`[]`))
 			},
 		},
 		{
 			name: "milestone by number",
 			args: args{
-				// TODO advancedIssueSearchCleanup
-				// No need for feature detection once GHES 3.17 support ends.
-				detector: fd.AdvancedIssueSearchSupportedAsOptIn(),
-				limit:    30,
-				repo:     ghrepo.New("OWNER", "REPO"),
+				limit: 30,
+				repo:  ghrepo.New("OWNER", "REPO"),
 				filters: prShared.FilterOptions{
 					Entity:    "issue",
 					State:     "open",
@@ -362,40 +349,21 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryMilestoneByNumber\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "milestone": {
-						"title": "1.x"
-					} } } }
-					`))
+					httpmock.REST("GET", "repos/OWNER/REPO/milestones/13"),
+					httpmock.StringResponse(`{"title": "1.x", "number": 13}`))
 				reg.Register(
-					httpmock.GraphQL(`query IssueSearch\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {
-						"repository": { "hasIssuesEnabled": true },
-						"search": {
-							"issueCount": 0,
-							"nodes": []
-						}
-					} }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner": "OWNER",
-							"repo":  "REPO",
-							"limit": float64(30),
-							"query": "milestone:1.x repo:OWNER/REPO state:open type:issue",
-							"type":  "ISSUE_ADVANCED",
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "search/issues", url.Values{
+						"per_page": {"30"},
+						"q":        {"milestone:1.x repo:OWNER/REPO state:open type:issue"},
+					}),
+					httpmock.StringResponse(`{"total_count": 0, "items": []}`))
 			},
 		},
 		{
 			name: "milestone by title",
 			args: args{
-				// TODO advancedIssueSearchCleanup
-				// No need for feature detection once GHES 3.17 support ends.
-				detector: fd.AdvancedIssueSearchSupportedAsOptIn(),
-				limit:    30,
-				repo:     ghrepo.New("OWNER", "REPO"),
+				limit: 30,
+				repo:  ghrepo.New("OWNER", "REPO"),
 				filters: prShared.FilterOptions{
 					Entity:    "issue",
 					State:     "open",
@@ -404,23 +372,11 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueSearch\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {
-						"repository": { "hasIssuesEnabled": true },
-						"search": {
-							"issueCount": 0,
-							"nodes": []
-						}
-					} }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner": "OWNER",
-							"repo":  "REPO",
-							"limit": float64(30),
-							"query": "milestone:1.x repo:OWNER/REPO state:open type:issue",
-							"type":  "ISSUE_ADVANCED",
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "search/issues", url.Values{
+						"per_page": {"30"},
+						"q":        {"milestone:1.x repo:OWNER/REPO state:open type:issue"},
+					}),
+					httpmock.StringResponse(`{"total_count": 0, "items": []}`))
 			},
 		},
 		{
@@ -441,32 +397,21 @@ func Test_issueList(t *testing.T) {
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login":"monalisa"}`))
 				reg.Register(
-					httpmock.GraphQL(`query IssueList\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {	"repository": {
-						"hasIssuesEnabled": true,
-						"issues": { "nodes": [] }
-					} } }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner":    "OWNER",
-							"repo":     "REPO",
-							"limit":    float64(30),
-							"states":   []any{"OPEN"},
-							"assignee": "monalisa",
-							"author":   "monalisa",
-							"mention":  "monalisa",
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "repos/OWNER/REPO/issues", url.Values{
+						"per_page":  {"100"},
+						"state":     {"open"},
+						"assignee":  {"monalisa"},
+						"creator":   {"monalisa"},
+						"mentioned": {"monalisa"},
+					}),
+					httpmock.StringResponse(`[]`))
 			},
 		},
 		{
 			name: "@me with search",
 			args: args{
-				// TODO advancedIssueSearchCleanup
-				// No need for feature detection once GHES 3.17 support ends.
-				detector: fd.AdvancedIssueSearchSupportedAsOptIn(),
-				limit:    30,
-				repo:     ghrepo.New("OWNER", "REPO"),
+				limit: 30,
+				repo:  ghrepo.New("OWNER", "REPO"),
 				filters: prShared.FilterOptions{
 					Entity:   "issue",
 					State:    "open",
@@ -478,33 +423,18 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueSearch\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {
-						"repository": { "hasIssuesEnabled": true },
-						"search": {
-							"issueCount": 0,
-							"nodes": []
-						}
-					} }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner": "OWNER",
-							"repo":  "REPO",
-							"limit": float64(30),
-							"query": "( auth bug ) assignee:@me author:@me mentions:@me repo:OWNER/REPO state:open type:issue",
-							"type":  "ISSUE_ADVANCED",
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "search/issues", url.Values{
+						"per_page": {"30"},
+						"q":        {"( auth bug ) assignee:@me author:@me mentions:@me repo:OWNER/REPO state:open type:issue"},
+					}),
+					httpmock.StringResponse(`{"total_count": 0, "items": []}`))
 			},
 		},
 		{
 			name: "with labels",
 			args: args{
-				// TODO advancedIssueSearchCleanup
-				// No need for feature detection once GHES 3.17 support ends.
-				detector: fd.AdvancedIssueSearchSupportedAsOptIn(),
-				limit:    30,
-				repo:     ghrepo.New("OWNER", "REPO"),
+				limit: 30,
+				repo:  ghrepo.New("OWNER", "REPO"),
 				filters: prShared.FilterOptions{
 					Entity: "issue",
 					State:  "open",
@@ -513,33 +443,18 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueSearch\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {
-						"repository": { "hasIssuesEnabled": true },
-						"search": {
-							"issueCount": 0,
-							"nodes": []
-						}
-					} }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner": "OWNER",
-							"repo":  "REPO",
-							"limit": float64(30),
-							"query": `label:"one world" label:hello repo:OWNER/REPO state:open type:issue`,
-							"type":  "ISSUE_ADVANCED",
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "search/issues", url.Values{
+						"per_page": {"30"},
+						"q":        {`label:"one world" label:hello repo:OWNER/REPO state:open type:issue`},
+					}),
+					httpmock.StringResponse(`{"total_count": 0, "items": []}`))
 			},
 		},
 		{
 			name: "with issue type",
 			args: args{
-				// TODO advancedIssueSearchCleanup
-				// No need for feature detection once GHES 3.17 support ends.
-				detector: fd.AdvancedIssueSearchSupportedAsOptIn(),
-				limit:    30,
-				repo:     ghrepo.New("OWNER", "REPO"),
+				limit: 30,
+				repo:  ghrepo.New("OWNER", "REPO"),
 				filters: prShared.FilterOptions{
 					Entity:    "issue",
 					State:     "open",
@@ -548,23 +463,11 @@ func Test_issueList(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueSearch\b`),
-					httpmock.GraphQLQuery(`
-					{ "data": {
-						"repository": { "hasIssuesEnabled": true },
-						"search": {
-							"issueCount": 0,
-							"nodes": []
-						}
-					} }`, func(_ string, params map[string]any) {
-						assert.Equal(t, map[string]any{
-							"owner": "OWNER",
-							"repo":  "REPO",
-							"limit": float64(30),
-							"query": "repo:OWNER/REPO state:open type:Bug type:issue",
-							"type":  "ISSUE_ADVANCED",
-						}, params)
-					}))
+					httpmock.QueryMatcher("GET", "search/issues", url.Values{
+						"per_page": {"30"},
+						"q":        {"repo:OWNER/REPO state:open type:Bug type:issue"},
+					}),
+					httpmock.StringResponse(`{"total_count": 0, "items": []}`))
 			},
 		},
 	}
@@ -576,7 +479,7 @@ func Test_issueList(t *testing.T) {
 				tt.httpStubs(httpreg)
 			}
 			client := &http.Client{Transport: httpreg}
-			_, err := issueList(client, tt.args.detector, tt.args.repo, tt.args.filters, tt.args.limit)
+			_, err := issueList(client, tt.args.repo, tt.args.filters, tt.args.limit)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -586,154 +489,15 @@ func Test_issueList(t *testing.T) {
 	}
 }
 
-func TestIssueList_withProjectItems(t *testing.T) {
-	reg := &httpmock.Registry{}
-	defer reg.Verify(t)
+func TestIssueList_json_unsupportedFields(t *testing.T) {
+	for _, field := range []string{"projectItems", "projectCards", "closedByPullRequestsReferences", "isPinned"} {
+		t.Run(field, func(t *testing.T) {
+			reg := &httpmock.Registry{}
+			defer reg.Verify(t)
 
-	reg.Register(
-		httpmock.GraphQL(`query IssueList\b`),
-		httpmock.GraphQLQuery(`{
-			"data": {
-			  "repository": {
-				"hasIssuesEnabled": true,
-				"issues": {
-				  "totalCount": 1,
-				  "nodes": [
-					{
-					  "projectItems": {
-						"nodes": [
-						  {
-							"id": "PVTI_lAHOAA3WC84AW6WNzgJ8rnQ",
-							"project": {
-							  "id": "PVT_kwHOAA3WC84AW6WN",
-							  "title": "Test Public Project"
-							},
-							"status": {
-							  "optionId": "47fc9ee4",
-							  "name": "In Progress"
-							}
-						  }
-						],
-						"totalCount": 1
-					  }
-					}
-				  ]
-				}
-			  }
-			}
-		  }`, func(_ string, params map[string]any) {
-			require.Equal(t, map[string]any{
-				"owner":  "OWNER",
-				"repo":   "REPO",
-				"limit":  float64(30),
-				"states": []any{"OPEN"},
-			}, params)
-		}))
-
-	client := &http.Client{Transport: reg}
-	issuesAndTotalCount, err := issueList(
-		client,
-		nil,
-		ghrepo.New("OWNER", "REPO"),
-		prShared.FilterOptions{
-			Entity: "issue",
-		},
-		30,
-	)
-
-	require.NoError(t, err)
-	require.Len(t, issuesAndTotalCount.Issues, 1)
-	require.Len(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes, 1)
-
-	require.Equal(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes[0].ID, "PVTI_lAHOAA3WC84AW6WNzgJ8rnQ")
-
-	expectedProject := api.ProjectV2ItemProject{
-		ID:    "PVT_kwHOAA3WC84AW6WN",
-		Title: "Test Public Project",
+			_, err := runCommand(reg, false, "--json "+field)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, api.ErrNotSupported)
+		})
 	}
-	require.Equal(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes[0].Project, expectedProject)
-
-	expectedStatus := api.ProjectV2ItemStatus{
-		OptionID: "47fc9ee4",
-		Name:     "In Progress",
-	}
-	require.Equal(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes[0].Status, expectedStatus)
-}
-
-func TestIssueList_Search_withProjectItems(t *testing.T) {
-	reg := &httpmock.Registry{}
-	defer reg.Verify(t)
-
-	reg.Register(
-		httpmock.GraphQL(`query IssueSearch\b`),
-		httpmock.GraphQLQuery(`{
-			"data": {
-			  "repository": {
-				"hasIssuesEnabled": true
-			  },
-			  "search": {
-				"issueCount": 1,
-				"nodes": [
-				  {
-					"projectItems": {
-					  "nodes": [
-						{
-						  "id": "PVTI_lAHOAA3WC84AW6WNzgJ8rl0",
-						  "project": {
-							"id": "PVT_kwHOAA3WC84AW6WN",
-							"title": "Test Public Project"
-						  },
-						  "status": {
-							"optionId": "47fc9ee4",
-							"name": "In Progress"
-						  }
-						}
-					  ],
-					  "totalCount": 1
-					}
-				  }
-				]
-			  }
-			}
-		  }`, func(_ string, params map[string]any) {
-			require.Equal(t, map[string]any{
-				"owner": "OWNER",
-				"repo":  "REPO",
-				"type":  "ISSUE_ADVANCED",
-				"limit": float64(30),
-				"query": "( just used to force the search API branch ) repo:OWNER/REPO type:issue",
-			}, params)
-		}))
-
-	client := &http.Client{Transport: reg}
-	issuesAndTotalCount, err := issueList(
-		client,
-		// TODO advancedIssueSearchCleanup
-		// No need for feature detection once GHES 3.17 support ends.
-		fd.AdvancedIssueSearchSupportedAsOptIn(),
-		ghrepo.New("OWNER", "REPO"),
-		prShared.FilterOptions{
-			Entity: "issue",
-			Search: "just used to force the search API branch",
-		},
-		30,
-	)
-
-	require.NoError(t, err)
-	require.Len(t, issuesAndTotalCount.Issues, 1)
-	require.Len(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes, 1)
-
-	require.Equal(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes[0].ID, "PVTI_lAHOAA3WC84AW6WNzgJ8rl0")
-
-	expectedProject := api.ProjectV2ItemProject{
-		ID:    "PVT_kwHOAA3WC84AW6WN",
-		Title: "Test Public Project",
-	}
-	require.Equal(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes[0].Project, expectedProject)
-
-	expectedStatus := api.ProjectV2ItemStatus{
-		OptionID: "47fc9ee4",
-		Name:     "In Progress",
-	}
-	require.Equal(t, issuesAndTotalCount.Issues[0].ProjectItems.Nodes[0].Status, expectedStatus)
 }

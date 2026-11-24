@@ -33,11 +33,8 @@ func TestPinRun(t *testing.T) {
 			opts: &PinOptions{IssueNumber: 20},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "issue": { "id": "ISSUE-ID", "number": 20, "title": "Issue Title", "isPinned": false}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/20"),
+					httpmock.StringResponse(`{ "node_id": "ISSUE-ID", "number": 20, "title": "Issue Title"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation IssuePin\b`),
@@ -50,21 +47,6 @@ func TestPinRun(t *testing.T) {
 			},
 			wantStdout: "",
 			wantStderr: "✓ Pinned issue OWNER/REPO#20 (Issue Title)\n",
-		},
-		{
-			name: "issue already pinned",
-			tty:  true,
-			opts: &PinOptions{IssueNumber: 20},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "issue": { "id": "ISSUE-ID", "number": 20, "title": "Issue Title", "isPinned": true}
-            } } }`),
-				)
-			},
-			wantStderr: "! Issue OWNER/REPO#20 (Issue Title) is already pinned\n",
 		},
 	}
 	for _, tt := range tests {

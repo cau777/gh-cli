@@ -63,8 +63,32 @@ func TestIssueStatus(t *testing.T) {
 		httpmock.REST("GET", "user"),
 		httpmock.StringResponse(`{"login":"octocat"}`))
 	http.Register(
-		httpmock.GraphQL(`query IssueStatus\b`),
-		httpmock.FileResponse("./fixtures/issueStatus.json"))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"has_issues": true}`))
+	http.Register(
+		httpmock.QueryMatcher("GET", "search/issues", map[string][]string{
+			"q":        {"repo:OWNER/REPO is:issue is:open assignee:octocat"},
+			"sort":     {"updated"},
+			"order":    {"desc"},
+			"per_page": {"10"},
+		}),
+		httpmock.StringResponse(`{"total_count":1,"items":[{"number":8,"title":"carrots","state":"open","updated_at":"2020-01-01T00:00:00Z"}]}`))
+	http.Register(
+		httpmock.QueryMatcher("GET", "search/issues", map[string][]string{
+			"q":        {"repo:OWNER/REPO is:issue is:open mentions:octocat"},
+			"sort":     {"updated"},
+			"order":    {"desc"},
+			"per_page": {"10"},
+		}),
+		httpmock.StringResponse(`{"total_count":1,"items":[{"number":9,"title":"squash","state":"open","updated_at":"2020-01-01T00:00:00Z"}]}`))
+	http.Register(
+		httpmock.QueryMatcher("GET", "search/issues", map[string][]string{
+			"q":        {"repo:OWNER/REPO is:issue is:open author:octocat"},
+			"sort":     {"updated"},
+			"order":    {"desc"},
+			"per_page": {"10"},
+		}),
+		httpmock.StringResponse(`{"total_count":2,"items":[{"number":10,"title":"broccoli","state":"open","updated_at":"2020-01-01T00:00:00Z"},{"number":11,"title":"swiss chard","state":"open","updated_at":"2020-01-01T00:00:00Z"}]}`))
 
 	output, err := runCommand(http, true, "")
 	if err != nil {
@@ -94,14 +118,17 @@ func TestIssueStatus_blankSlate(t *testing.T) {
 		httpmock.REST("GET", "user"),
 		httpmock.StringResponse(`{"login":"octocat"}`))
 	http.Register(
-		httpmock.GraphQL(`query IssueStatus\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"hasIssuesEnabled": true,
-			"assigned": { "nodes": [] },
-			"mentioned": { "nodes": [] },
-			"authored": { "nodes": [] }
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"has_issues": true}`))
+	http.Register(
+		httpmock.REST("GET", "search/issues"),
+		httpmock.StringResponse(`{"total_count":0,"items":[]}`))
+	http.Register(
+		httpmock.REST("GET", "search/issues"),
+		httpmock.StringResponse(`{"total_count":0,"items":[]}`))
+	http.Register(
+		httpmock.REST("GET", "search/issues"),
+		httpmock.StringResponse(`{"total_count":0,"items":[]}`))
 
 	output, err := runCommand(http, true, "")
 	if err != nil {
@@ -129,16 +156,14 @@ Issues opened by you
 func TestIssueStatus_disabledIssues(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
+	http.Exclude(t, httpmock.REST("GET", "search/issues"))
 
 	http.Register(
 		httpmock.REST("GET", "user"),
 		httpmock.StringResponse(`{"login":"octocat"}`))
 	http.Register(
-		httpmock.GraphQL(`query IssueStatus\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": {
-			"hasIssuesEnabled": false
-		} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"has_issues": false}`))
 
 	_, err := runCommand(http, true, "")
 	if err == nil || err.Error() != "the 'OWNER/REPO' repository has disabled issues" {

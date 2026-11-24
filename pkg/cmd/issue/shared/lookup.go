@@ -1,7 +1,6 @@
 package shared
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,7 +11,6 @@ import (
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	o "github.com/cli/cli/v2/pkg/option"
-	"github.com/cli/cli/v2/pkg/set"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -134,78 +132,8 @@ func FindIssuesOrPRs(httpClient *http.Client, repo ghrepo.Interface, issueNumber
 }
 
 func FindIssueOrPR(httpClient *http.Client, repo ghrepo.Interface, number int, fields []string) (*api.Issue, error) {
-	fieldSet := set.NewStringSet()
-	fieldSet.AddValues(fields)
-
-	var getProjectItems bool
-	if fieldSet.Contains("projectItems") {
-		getProjectItems = true
-		fieldSet.Remove("projectItems")
-		fieldSet.Add("number")
-	}
-
-	fields = fieldSet.ToSlice()
-
-	type response struct {
-		Repository struct {
-			HasIssuesEnabled bool
-			Issue            *api.Issue
-		}
-	}
-
-	query := fmt.Sprintf(`
-	query IssueByNumber($owner: String!, $repo: String!, $number: Int!) {
-		repository(owner: $owner, name: $repo) {
-			hasIssuesEnabled
-			issue: issueOrPullRequest(number: $number) {
-				__typename
-				...on Issue{%[1]s}
-				...on PullRequest{%[2]s}
-			}
-		}
-	}`, api.IssueGraphQL(fields), api.PullRequestGraphQL(fields))
-
-	variables := map[string]any{
-		"owner":  repo.RepoOwner(),
-		"repo":   repo.RepoName(),
-		"number": number,
-	}
-
-	var resp response
 	client := api.NewClientFromHTTP(httpClient)
-	if err := client.GraphQL(repo.RepoHost(), query, variables, &resp); err != nil {
-		if gerr, ok := errors.AsType[api.GraphQLError](err); ok {
-			if gerr.Match("NOT_FOUND", "repository.issue") && !resp.Repository.HasIssuesEnabled {
-				return nil, fmt.Errorf("the '%s' repository has disabled issues", ghrepo.FullName(repo))
-			} else if gerr.Match("FORBIDDEN", "repository.issue.projectCards.") {
-				issue := resp.Repository.Issue
-				// remove nil entries for project cards due to permission issues
-				projects := make([]*api.ProjectInfo, 0, len(issue.ProjectCards.Nodes))
-				for _, p := range issue.ProjectCards.Nodes {
-					if p != nil {
-						projects = append(projects, p)
-					}
-				}
-				issue.ProjectCards.Nodes = projects
-				return issue, &PartialLoadError{err}
-			}
-		}
-		return nil, err
-	}
-
-	if resp.Repository.Issue == nil {
-		return nil, errors.New("issue was not found but GraphQL reported no error")
-	}
-
-	if getProjectItems {
-		apiClient := api.NewClientFromHTTP(httpClient)
-		err := api.ProjectsV2ItemsForIssue(apiClient, repo, resp.Repository.Issue)
-		if err != nil && !api.ProjectsV2IgnorableError(err) {
-			return nil, err
-		}
-	}
-
-	return resp.Repository.Issue, nil
+	return api.SingleIssueREST(client, repo, number, fields)
 }
 
 // ResolveIssueRef parses an issue reference (number or URL) and returns its

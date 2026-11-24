@@ -16,7 +16,7 @@ func TestIsPullRequest(t *testing.T) {
 	tests := []struct {
 		name     string
 		repo     ghrepo.Interface
-		response string
+		stubResp httpmock.Responder
 		want     bool
 		wantURL  string
 		wantErr  string
@@ -24,31 +24,30 @@ func TestIsPullRequest(t *testing.T) {
 		{
 			name:     "an issue",
 			repo:     ghrepo.New("monalisa", "monas-cafe"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"__typename":"Issue","number":142}}}}`,
+			stubResp: httpmock.StringResponse(`{"number":142}`),
 			want:     false,
-			wantURL:  "https://api.github.com/graphql",
+			wantURL:  "https://api.github.com/repos/monalisa/monas-cafe/issues/142",
 		},
 		{
 			name:     "a pull request",
 			repo:     ghrepo.New("monalisa", "monas-cafe"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"__typename":"PullRequest","number":142}}}}`,
+			stubResp: httpmock.StringResponse(`{"number":142,"pull_request":{"url":"https://api.github.com/repos/monalisa/monas-cafe/pulls/142"}}`),
 			want:     true,
-			wantURL:  "https://api.github.com/graphql",
+			wantURL:  "https://api.github.com/repos/monalisa/monas-cafe/issues/142",
 		},
 		{
 			name:     "a repository on a ghe.com host",
 			repo:     ghrepo.NewWithHost("monalisa", "monas-cafe", "monas-cafe.ghe.com"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"__typename":"Issue","number":142}}}}`,
+			stubResp: httpmock.StringResponse(`{"number":142}`),
 			want:     false,
-			wantURL:  "https://api.monas-cafe.ghe.com/graphql",
+			wantURL:  "https://api.monas-cafe.ghe.com/repos/monalisa/monas-cafe/issues/142",
 		},
 		{
-			name: "a number that is neither",
-			repo: ghrepo.New("monalisa", "monas-cafe"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":null}},"errors":[{"type":"NOT_FOUND",` +
-				`"message":"Could not resolve to an issue or pull request with the number of 142.","path":["repository","issue"]}]}`,
-			wantURL: "https://api.github.com/graphql",
-			wantErr: "GraphQL: Could not resolve to an issue or pull request with the number of 142. (repository.issue)",
+			name:     "a number that is neither",
+			repo:     ghrepo.New("monalisa", "monas-cafe"),
+			stubResp: httpmock.StatusJSONResponse(http.StatusNotFound, map[string]string{"message": "Not Found"}),
+			wantURL:  "https://api.github.com/repos/monalisa/monas-cafe/issues/142",
+			wantErr:  "HTTP 404: Not Found (https://api.github.com/repos/monalisa/monas-cafe/issues/142)",
 		},
 	}
 
@@ -57,12 +56,8 @@ func TestIsPullRequest(t *testing.T) {
 			reg := &httpmock.Registry{}
 			defer reg.Verify(t)
 			reg.Register(
-				httpmock.GraphQL(`query IssueByNumber\b`),
-				httpmock.GraphQLQuery(tt.response, func(_ string, vars map[string]any) {
-					assert.Equal(t, "monalisa", vars["owner"])
-					assert.Equal(t, "monas-cafe", vars["repo"])
-					assert.Equal(t, float64(142), vars["number"])
-				}),
+				httpmock.REST("GET", "repos/monalisa/monas-cafe/issues/142"),
+				tt.stubResp,
 			)
 
 			c := NewArtifactClient(&http.Client{Transport: reg})
@@ -82,44 +77,49 @@ func TestIsPullRequest(t *testing.T) {
 
 func TestUploadTarget(t *testing.T) {
 	tests := []struct {
-		name     string
-		repo     ghrepo.Interface
-		response string
-		want     *UploadTarget
-		wantURL  string
-		wantErr  string
+		name         string
+		repo         ghrepo.Interface
+		issueStub    httpmock.Responder
+		repoStub     httpmock.Responder
+		want         *UploadTarget
+		wantURL      string
+		wantRepoReqs int
+		wantErr      string
 	}{
 		{
-			name: "an issue",
-			repo: ghrepo.New("monalisa", "monas-cafe"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"__typename":"Issue","number":142,` +
-				`"repository":{"id":"R_1","name":"monas-cafe","nameWithOwner":"monalisa/monas-cafe","databaseId":1234,"viewerPermission":"WRITE"}}}}}`,
-			want:    &UploadTarget{RepositoryID: 1234, ViewerPermission: "WRITE"},
-			wantURL: "https://api.github.com/graphql",
+			name:         "an issue",
+			repo:         ghrepo.New("monalisa", "monas-cafe"),
+			issueStub:    httpmock.StringResponse(`{"number":142}`),
+			repoStub:     httpmock.StringResponse(`{"id":1234,"node_id":"R_1","name":"monas-cafe","full_name":"monalisa/monas-cafe","permissions":{"push":true}}`),
+			want:         &UploadTarget{RepositoryID: 1234, ViewerPermission: "WRITE"},
+			wantURL:      "https://api.github.com/repos/monalisa/monas-cafe/issues/142",
+			wantRepoReqs: 2,
 		},
 		{
-			name: "a pull request",
-			repo: ghrepo.New("monalisa", "monas-cafe"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"__typename":"PullRequest","number":142,` +
-				`"repository":{"id":"R_1","name":"monas-cafe","nameWithOwner":"monalisa/monas-cafe","databaseId":1234,"viewerPermission":"ADMIN"}}}}}`,
-			want:    &UploadTarget{IsPullRequest: true, RepositoryID: 1234, ViewerPermission: "ADMIN"},
-			wantURL: "https://api.github.com/graphql",
+			name:         "a pull request",
+			repo:         ghrepo.New("monalisa", "monas-cafe"),
+			issueStub:    httpmock.StringResponse(`{"number":142,"pull_request":{"url":"https://api.github.com/repos/monalisa/monas-cafe/pulls/142"}}`),
+			repoStub:     httpmock.StringResponse(`{"id":1234,"node_id":"R_1","name":"monas-cafe","full_name":"monalisa/monas-cafe","permissions":{"admin":true}}`),
+			want:         &UploadTarget{IsPullRequest: true, RepositoryID: 1234, ViewerPermission: "ADMIN"},
+			wantURL:      "https://api.github.com/repos/monalisa/monas-cafe/issues/142",
+			wantRepoReqs: 2,
 		},
 		{
-			name: "a repository on a ghe.com host",
-			repo: ghrepo.NewWithHost("monalisa", "monas-cafe", "monas-cafe.ghe.com"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"__typename":"Issue","number":142,` +
-				`"repository":{"id":"R_1","name":"monas-cafe","nameWithOwner":"monalisa/monas-cafe","databaseId":1234,"viewerPermission":"READ"}}}}}`,
-			want:    &UploadTarget{RepositoryID: 1234, ViewerPermission: "READ"},
-			wantURL: "https://api.monas-cafe.ghe.com/graphql",
+			name:         "a repository on a ghe.com host",
+			repo:         ghrepo.NewWithHost("monalisa", "monas-cafe", "monas-cafe.ghe.com"),
+			issueStub:    httpmock.StringResponse(`{"number":142}`),
+			repoStub:     httpmock.StringResponse(`{"id":1234,"node_id":"R_1","name":"monas-cafe","full_name":"monalisa/monas-cafe","permissions":{"pull":true}}`),
+			want:         &UploadTarget{RepositoryID: 1234, ViewerPermission: "READ"},
+			wantURL:      "https://api.monas-cafe.ghe.com/repos/monalisa/monas-cafe/issues/142",
+			wantRepoReqs: 2,
 		},
 		{
-			name: "a number that is neither",
-			repo: ghrepo.New("monalisa", "monas-cafe"),
-			response: `{"data":{"repository":{"hasIssuesEnabled":true,"issue":null}},"errors":[{"type":"NOT_FOUND",` +
-				`"message":"Could not resolve to an issue or pull request with the number of 142.","path":["repository","issue"]}]}`,
-			wantURL: "https://api.github.com/graphql",
-			wantErr: "GraphQL: Could not resolve to an issue or pull request with the number of 142. (repository.issue)",
+			name:         "a number that is neither",
+			repo:         ghrepo.New("monalisa", "monas-cafe"),
+			issueStub:    httpmock.StatusJSONResponse(http.StatusNotFound, map[string]string{"message": "Not Found"}),
+			wantURL:      "https://api.github.com/repos/monalisa/monas-cafe/issues/142",
+			wantRepoReqs: 1,
+			wantErr:      "HTTP 404: Not Found (https://api.github.com/repos/monalisa/monas-cafe/issues/142)",
 		},
 	}
 
@@ -128,20 +128,20 @@ func TestUploadTarget(t *testing.T) {
 			reg := &httpmock.Registry{}
 			defer reg.Verify(t)
 			reg.Register(
-				httpmock.GraphQL(`query IssueByNumber\b`),
-				httpmock.GraphQLQuery(tt.response, func(query string, vars map[string]any) {
-					assert.Contains(t, query, "databaseId")
-					assert.Contains(t, query, "viewerPermission")
-					assert.Equal(t, "monalisa", vars["owner"])
-					assert.Equal(t, "monas-cafe", vars["repo"])
-					assert.Equal(t, float64(142), vars["number"])
-				}),
+				httpmock.REST("GET", "repos/monalisa/monas-cafe/issues/142"),
+				tt.issueStub,
 			)
+			if tt.repoStub != nil {
+				reg.Register(
+					httpmock.REST("GET", "repos/monalisa/monas-cafe"),
+					tt.repoStub,
+				)
+			}
 
 			c := NewArtifactClient(&http.Client{Transport: reg})
 			got, err := c.UploadTarget(tt.repo, 142)
 
-			require.Len(t, reg.Requests, 1)
+			require.Len(t, reg.Requests, tt.wantRepoReqs)
 			assert.Equal(t, tt.wantURL, reg.Requests[0].URL.String())
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)

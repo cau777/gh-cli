@@ -126,12 +126,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation IssueClose\b`),
@@ -151,12 +147,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/issues/13/comments"),
@@ -183,12 +175,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation IssueClose\b`),
@@ -210,12 +198,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation IssueClose\b`),
@@ -237,20 +221,12 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "DUPLICATE-ID", "number": 99}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/99"),
+					httpmock.StringResponse(`{ "node_id": "DUPLICATE-ID", "number": 99}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation IssueClose\b`),
@@ -273,12 +249,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 			},
 			wantErr: true,
@@ -292,20 +264,12 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "__typename": "PullRequest", "id": "PULL-ID", "number": 99}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/99"),
+					httpmock.StringResponse(`{ "node_id": "PULL-ID", "number": 99, "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/99"}}`),
 				)
 			},
 			wantErr: true,
@@ -319,12 +283,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 			},
 			wantErr: true,
@@ -337,12 +297,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-            { "data": { "repository": {
-              "hasIssuesEnabled": true,
-              "issue": { "number": 13, "title": "The title of the issue", "state": "CLOSED"}
-            } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StringResponse(`{ "number": 13, "title": "The title of the issue", "state": "closed"}`),
 				)
 			},
 			wantStderr: "! Issue OWNER/REPO#13 (The title of the issue) is already closed\n",
@@ -354,12 +310,8 @@ func TestCloseRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{
-            "data": { "repository": { "hasIssuesEnabled": false, "issue": null } },
-            "errors": [ { "type": "NOT_FOUND", "path": [ "repository", "issue" ],
-            "message": "Could not resolve to an issue or pull request with the number of 13."
-					} ] }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+					httpmock.StatusStringResponse(410, `{"message": "Issues are disabled for this repo"}`),
 				)
 			},
 			wantErr: true,

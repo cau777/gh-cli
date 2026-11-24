@@ -778,13 +778,12 @@ func Test_createRun(t *testing.T) {
 							"URL": "https://github.com/OWNER/REPO/issues/123"
 						} } } }`))
 				r.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "issueTypes": { "nodes": [
-							{ "id": "IT_1", "name": "Bug", "description": "", "color": "d73a4a" },
-							{ "id": "IT_2", "name": "Feature", "description": "", "color": "0075ca" },
-							{ "id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
-						] } } } }`))
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "IT_1", "name": "Bug", "description": "", "color": "d73a4a" },
+						{ "node_id": "IT_2", "name": "Feature", "description": "", "color": "0075ca" },
+						{ "node_id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
+					]`))
 				r.Register(
 					httpmock.GraphQL(`mutation UpdateIssueIssueType\b`),
 					httpmock.GraphQLMutation(`
@@ -827,13 +826,12 @@ func Test_createRun(t *testing.T) {
 					}`))
 				// Issue types are fetched up front to power the interactive prompt.
 				r.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "issueTypes": { "nodes": [
-							{ "id": "IT_1", "name": "Bug", "description": "", "color": "d73a4a" },
-							{ "id": "IT_2", "name": "Feature", "description": "", "color": "0075ca" },
-							{ "id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
-						] } } } }`))
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "IT_1", "name": "Bug", "description": "", "color": "d73a4a" },
+						{ "node_id": "IT_2", "name": "Feature", "description": "", "color": "0075ca" },
+						{ "node_id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
+					]`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.StringResponse(`
@@ -877,13 +875,12 @@ func Test_createRun(t *testing.T) {
 							"URL": "https://github.com/OWNER/REPO/issues/123"
 						} } } }`))
 				r.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "issueTypes": { "nodes": [
-							{ "id": "IT_1", "name": "Bug", "description": "", "color": "d73a4a" },
-							{ "id": "IT_2", "name": "Feature", "description": "", "color": "0075ca" },
-							{ "id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
-						] } } } }`))
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "IT_1", "name": "Bug", "description": "", "color": "d73a4a" },
+						{ "node_id": "IT_2", "name": "Feature", "description": "", "color": "0075ca" },
+						{ "node_id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
+					]`))
 			},
 			wantsErr: `type "Bugz" not found; available types: Bug, Feature, Task`,
 		},
@@ -910,9 +907,8 @@ func Test_createRun(t *testing.T) {
 							"URL": "https://github.com/OWNER/REPO/issues/123"
 						} } } }`))
 				r.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-						{ "data": { "repository": { "issue": { "id": "PARENT_ID_100" } } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/100"),
+					httpmock.StringResponse(`{ "node_id": "PARENT_ID_100", "number": 100 }`))
 				r.Register(
 					httpmock.GraphQL(`mutation AddSubIssue\b`),
 					httpmock.GraphQLMutation(`
@@ -949,20 +945,18 @@ func Test_createRun(t *testing.T) {
 							"id": "ISSUE_ID_123",
 							"URL": "https://github.com/OWNER/REPO/issues/123"
 						} } } }`))
-				// IssueNodeID lookups for each ref, routed by number so they
-				// don't depend on parallel ordering.
 				r.Register(
-					issueNodeIDByNumberMatcher(200),
-					httpmock.StringResponse(`{ "data": { "repository": { "issue": { "id": "BLOCKER_ID_200" } } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/200"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKER_ID_200", "number": 200 }`))
 				r.Register(
-					issueNodeIDByNumberMatcher(201),
-					httpmock.StringResponse(`{ "data": { "repository": { "issue": { "id": "BLOCKER_ID_201" } } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/201"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKER_ID_201", "number": 201 }`))
 				r.Register(
-					issueNodeIDByNumberMatcher(300),
-					httpmock.StringResponse(`{ "data": { "repository": { "issue": { "id": "BLOCKED_ID_300" } } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/300"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKED_ID_300", "number": 300 }`))
 				r.Register(
-					issueNodeIDByNumberMatcher(301),
-					httpmock.StringResponse(`{ "data": { "repository": { "issue": { "id": "BLOCKED_ID_301" } } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/301"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKED_ID_301", "number": 301 }`))
 				// AddBlockedBy mutations, routed by their inputs so they
 				// also don't depend on parallel ordering.
 				// --blocked-by N: this issue is blocked by N
@@ -2011,31 +2005,4 @@ func TestProjectsV1Deprecation(t *testing.T) {
 			reg.Verify(t)
 		})
 	})
-}
-
-// issueNodeIDByNumberMatcher matches an IssueNodeID GraphQL query whose
-// number variable equals the given value. Used by tests that issue
-// multiple IssueNodeID lookups and need stubs to route by issue number
-// rather than by registration order.
-func issueNodeIDByNumberMatcher(number int) httpmock.Matcher {
-	queryMatcher := httpmock.GraphQL(`query IssueNodeID\b`)
-	return func(req *http.Request) bool {
-		if !queryMatcher(req) {
-			return false
-		}
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			return false
-		}
-		req.Body = io.NopCloser(bytes.NewReader(body))
-		var b struct {
-			Variables struct {
-				Number int `json:"number"`
-			} `json:"variables"`
-		}
-		if err := json.Unmarshal(body, &b); err != nil {
-			return false
-		}
-		return b.Variables.Number == number
-	}
 }

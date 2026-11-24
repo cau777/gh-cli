@@ -216,8 +216,8 @@ func TestDevelopRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":42}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/42"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":42}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query LinkedBranchFeature\b`),
@@ -234,8 +234,8 @@ func TestDevelopRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":42}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/42"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":42}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query LinkedBranchFeature\b`),
@@ -262,8 +262,8 @@ func TestDevelopRun(t *testing.T) {
 			tty: true,
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":42}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/42"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":42}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query LinkedBranchFeature\b`),
@@ -302,8 +302,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id": "SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -339,13 +339,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.GraphQLQuery(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id": "SOMEID","number":123,"title":"my issue"}}}}`,
-						func(_ string, inputs map[string]any) {
-							assert.Equal(t, "OWNER", inputs["owner"])
-							assert.Equal(t, "REPO", inputs["repo"])
-							assert.Equal(t, float64(123), inputs["number"])
-						}),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -386,8 +381,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{ "hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -436,8 +431,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{ "hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query ListLinkedBranches\b`),
@@ -479,8 +474,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{ "hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query ListLinkedBranches\b`),
@@ -516,8 +511,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{ "hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query ListLinkedBranches\b`),
@@ -549,8 +544,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{ "hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query ListLinkedBranches\b`),
@@ -592,8 +587,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id": "SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/cli/cli/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -627,8 +622,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id": "SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -679,8 +674,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id": "SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -856,8 +851,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 			},
 			wantErrContains: "--worktree path must not be a symlink",
@@ -878,8 +873,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 			},
 			runStubs: func(cs *run.CommandStubber) {
@@ -903,8 +898,8 @@ func TestDevelopRun(t *testing.T) {
 					httpmock.StringResponse(featureEnabledPayload),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id": "SOMEID","number":123,"title":"my issue"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`query FindRepoBranchID\b`),
@@ -991,8 +986,8 @@ func registerWorktreeDevelopHTTPStubs(reg *httpmock.Registry, _ *testing.T) {
 		httpmock.StringResponse(`{"data":{"LinkedBranch":{"fields":[{"name":"id"},{"name":"ref"}]}}}`),
 	)
 	reg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`{"data":{"repository":{"hasIssuesEnabled":true,"issue":{"id":"SOMEID","number":123,"title":"my issue"}}}}`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+		httpmock.StringResponse(`{"node_id":"SOMEID","number":123,"title":"my issue"}`),
 	)
 	reg.Register(
 		httpmock.GraphQL(`query FindRepoBranchID\b`),

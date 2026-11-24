@@ -1,14 +1,18 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/shurcooL/githubv4"
+	"golang.org/x/sync/errgroup"
 )
 
 type IssuesPayload struct {
@@ -26,6 +30,7 @@ type IssuesAndTotalCount struct {
 type Issue struct {
 	Typename         string `json:"__typename"`
 	ID               string
+	DatabaseID       int64
 	Number           int
 	Title            string
 	URL              string
@@ -394,82 +399,64 @@ type IssueStatusOptions struct {
 }
 
 func IssueStatus(client *Client, repo ghrepo.Interface, options IssueStatusOptions) (*IssuesPayload, error) {
-	type response struct {
-		Repository struct {
-			Assigned struct {
-				TotalCount int
-				Nodes      []Issue
-			}
-			Mentioned struct {
-				TotalCount int
-				Nodes      []Issue
-			}
-			Authored struct {
-				TotalCount int
-				Nodes      []Issue
-			}
-			HasIssuesEnabled bool
-		}
-	}
+	const perPage = 10
+	fullName := ghrepo.FullName(repo)
 
-	fragments := fmt.Sprintf("fragment issue on Issue{%s}", IssueGraphQL(options.Fields))
-	query := fragments + `
-	query IssueStatus($owner: String!, $repo: String!, $viewer: String!, $per_page: Int = 10) {
-		repository(owner: $owner, name: $repo) {
-			hasIssuesEnabled
-			assigned: issues(filterBy: {assignee: $viewer, states: OPEN}, first: $per_page, orderBy: {field: UPDATED_AT, direction: DESC}) {
-				totalCount
-				nodes {
-					...issue
-				}
-			}
-			mentioned: issues(filterBy: {mentioned: $viewer, states: OPEN}, first: $per_page, orderBy: {field: UPDATED_AT, direction: DESC}) {
-				totalCount
-				nodes {
-					...issue
-				}
-			}
-			authored: issues(filterBy: {createdBy: $viewer, states: OPEN}, first: $per_page, orderBy: {field: UPDATED_AT, direction: DESC}) {
-				totalCount
-				nodes {
-					...issue
-				}
-			}
-		}
-	}`
-
-	variables := map[string]any{
-		"owner":  repo.RepoOwner(),
-		"repo":   repo.RepoName(),
-		"viewer": options.Username,
-	}
-
-	var resp response
-	err := client.GraphQL(repo.RepoHost(), query, variables, &resp)
+	r, err := fetchRESTRepo(client, repo)
 	if err != nil {
 		return nil, err
 	}
-
-	if !resp.Repository.HasIssuesEnabled {
-		return nil, fmt.Errorf("the '%s' repository has disabled issues", ghrepo.FullName(repo))
+	if !r.HasIssues {
+		return nil, fmt.Errorf("the '%s' repository has disabled issues", fullName)
 	}
 
-	payload := IssuesPayload{
-		Assigned: IssuesAndTotalCount{
-			Issues:     resp.Repository.Assigned.Nodes,
-			TotalCount: resp.Repository.Assigned.TotalCount,
-		},
-		Mentioned: IssuesAndTotalCount{
-			Issues:     resp.Repository.Mentioned.Nodes,
-			TotalCount: resp.Repository.Mentioned.TotalCount,
-		},
-		Authored: IssuesAndTotalCount{
-			Issues:     resp.Repository.Authored.Nodes,
-			TotalCount: resp.Repository.Authored.TotalCount,
-		},
+	var (
+		assigned  *IssuesAndTotalCount
+		mentioned *IssuesAndTotalCount
+		authored  *IssuesAndTotalCount
+	)
+
+	g, _ := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		q := fmt.Sprintf("repo:%s is:issue is:open assignee:%s", fullName, options.Username)
+		res, err := SearchIssuesREST(client, repo, q, "updated", perPage)
+		if err != nil {
+			return err
+		}
+		assigned = res
+		return nil
+	})
+
+	g.Go(func() error {
+		q := fmt.Sprintf("repo:%s is:issue is:open mentions:%s", fullName, options.Username)
+		res, err := SearchIssuesREST(client, repo, q, "updated", perPage)
+		if err != nil {
+			return err
+		}
+		mentioned = res
+		return nil
+	})
+
+	g.Go(func() error {
+		q := fmt.Sprintf("repo:%s is:issue is:open author:%s", fullName, options.Username)
+		res, err := SearchIssuesREST(client, repo, q, "updated", perPage)
+		if err != nil {
+			return err
+		}
+		authored = res
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
-	return &payload, nil
+	return &IssuesPayload{
+		Assigned:  *assigned,
+		Mentioned: *mentioned,
+		Authored:  *authored,
+	}, nil
 }
 
 func (i Issue) Link() string {
@@ -744,59 +731,33 @@ func DeferredUpdateIssue(client *Client, opts DeferredUpdateIssueOptions) error 
 	return errors.Join(errs...)
 }
 
-// RepoIssueTypes fetches the available issue types for a repository.
+// RepoIssueTypes fetches the available issue types for a repository's owner
+// organization via REST. For user-owned repositories (404/403), it returns an
+// empty slice.
 func RepoIssueTypes(client *Client, repo ghrepo.Interface) ([]IssueType, error) {
-	query := `
-	query RepositoryIssueTypes($owner: String!, $name: String!) {
-		repository(owner: $owner, name: $name) {
-			issueTypes(first: 50) {
-				nodes { id, name, description, color }
-			}
-		}
-	}`
-	variables := map[string]any{
-		"owner": repo.RepoOwner(),
-		"name":  repo.RepoName(),
-	}
-	var result struct {
-		Repository struct {
-			IssueTypes struct {
-				Nodes []IssueType
-			}
-		}
-	}
-	err := client.GraphQL(repo.RepoHost(), query, variables, &result)
+	p, err := safeurl.JoinPath("orgs", repo.RepoOwner(), "issue-types")
 	if err != nil {
 		return nil, err
 	}
-	return result.Repository.IssueTypes.Nodes, nil
+	var raw []restIssueType
+	if err := client.REST(repo.RepoHost(), http.MethodGet, p.String(), nil, &raw); err != nil {
+		if httpErr, ok := err.(HTTPError); ok && (httpErr.StatusCode == http.StatusNotFound || httpErr.StatusCode == http.StatusForbidden) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	types := make([]IssueType, len(raw))
+	for i := range raw {
+		types[i] = *raw[i].toIssueType()
+	}
+	return types, nil
 }
 
 // IssueNodeID fetches the node ID for an issue given its number and repository.
 func IssueNodeID(client *Client, repo ghrepo.Interface, number int) (string, error) {
-	query := `
-	query IssueNodeID($owner: String!, $name: String!, $number: Int!) {
-		repository(owner: $owner, name: $name) {
-			issue(number: $number) {
-				id
-			}
-		}
-	}`
-	variables := map[string]any{
-		"owner":  repo.RepoOwner(),
-		"name":   repo.RepoName(),
-		"number": number,
-	}
-	var result struct {
-		Repository struct {
-			Issue struct {
-				ID string
-			}
-		}
-	}
-	err := client.GraphQL(repo.RepoHost(), query, variables, &result)
+	issue, err := SingleIssueREST(client, repo, number, nil)
 	if err != nil {
 		return "", err
 	}
-	return result.Repository.Issue.ID, nil
+	return issue.ID, nil
 }

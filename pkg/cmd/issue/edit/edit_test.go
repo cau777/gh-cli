@@ -2,7 +2,6 @@ package edit
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -21,7 +20,6 @@ import (
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/gh/ghtelemetry"
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/cli/cli/v2/internal/run"
 	"github.com/cli/cli/v2/internal/telemetry"
 	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
@@ -708,14 +706,8 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueNumberGet(t, reg, 123)
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-						{ "errors": [
-							{
-								"type": "NOT_FOUND",
-								"message": "Could not resolve to an Issue with the number of 9999."
-							}
-						] }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/9999"),
+					httpmock.StatusJSONResponse(404, map[string]string{"message": "Not Found"}),
 				)
 			},
 			wantErr: true,
@@ -881,28 +873,16 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(fmt.Sprintf(`
-                        { "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-							"id": "%[1]d",
-							"number": %[1]d,
-                            "url": "https://github.com/OWNER/REPO/issue/123",
-                            "assignees": {
-                                "nodes": [
-                                    {
-                                        "id": "HUBOTID",
-                                        "login": "hubot",
-										"name": ""
-                                    },
-                                    {
-                                        "id": "MONAID",
-                                        "login": "MonaLisa",
-										"name": "Mona Display Name"
-                                    }
-                                ],
-                                "totalCount": 2
-                            }
-                        } } } }`, 123)),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{
+						"node_id": "123",
+						"number": 123,
+						"html_url": "https://github.com/OWNER/REPO/issue/123",
+						"assignees": [
+							{ "node_id": "HUBOTID", "login": "hubot", "type": "User" },
+							{ "node_id": "MONAID", "login": "MonaLisa", "name": "Mona Display Name", "type": "User" }
+						]
+					}`),
 				)
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
@@ -937,13 +917,11 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTypes": { "nodes": [
-						{ "id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" },
-						{ "id": "FEATURE_TYPE_ID", "name": "Feature", "description": "", "color": "" }
-					] } } } }
-					`),
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" },
+						{ "node_id": "FEATURE_TYPE_ID", "name": "Feature", "description": "", "color": "" }
+					]`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation UpdateIssueIssueType\b`),
@@ -973,12 +951,10 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGetWithRepository(reg, "the original body", 1234, "WRITE")
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTypes": { "nodes": [
-						{ "id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" }
-					] } } } }
-					`),
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" }
+					]`),
 				)
 				reg.Exclude(t, httpmock.REST("POST", "user-attachments/assets"))
 				reg.Exclude(t, httpmock.GraphQL(`mutation IssueUpdate\b`))
@@ -1036,13 +1012,11 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTypes": { "nodes": [
-						{ "id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" },
-						{ "id": "FEATURE_TYPE_ID", "name": "Feature", "description": "", "color": "" }
-					] } } } }
-					`),
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" },
+						{ "node_id": "FEATURE_TYPE_ID", "name": "Feature", "description": "", "color": "" }
+					]`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation UpdateIssueIssueType\b`),
@@ -1070,10 +1044,12 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issue": { "id": "PARENT_100_ID" } } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123/parent"),
+					httpmock.StatusStringResponse(404, `{"message":"Not Found"}`),
+				)
+				reg.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/100"),
+					httpmock.StringResponse(`{ "node_id": "PARENT_100_ID", "number": 100 }`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation AddSubIssue\b`),
@@ -1101,22 +1077,18 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueByNumber\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-						"id": "123",
-						"number": 123,
-						"url": "https://github.com/OWNER/REPO/issue/123",
-						"parent": {
-							"id": "PARENT_100_ID",
-							"number": 100,
-							"title": "Parent Issue",
-							"url": "https://github.com/OWNER/REPO/issues/100",
-							"state": "OPEN",
-							"repository": { "nameWithOwner": "OWNER/REPO" }
-						}
-					} } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{ "node_id": "123", "number": 123, "html_url": "https://github.com/OWNER/REPO/issue/123" }`),
+				)
+				reg.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123/parent"),
+					httpmock.StringResponse(`{
+						"node_id": "PARENT_100_ID",
+						"number": 100,
+						"title": "Parent Issue",
+						"html_url": "https://github.com/OWNER/REPO/issues/100",
+						"state": "open"
+					}`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation RemoveSubIssue\b`),
@@ -1144,12 +1116,12 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueNumberGet(t, reg, 100)
 				reg.Register(
-					issueNodeIDByNumberMatcher(123),
-					httpmock.StringResponse(`{ "data": { "repository": { "issue": { "id": "SUB_123_ID" } } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{ "node_id": "SUB_123_ID", "number": 123 }`),
 				)
 				reg.Register(
-					issueNodeIDByNumberMatcher(124),
-					httpmock.StringResponse(`{ "data": { "repository": { "issue": { "id": "SUB_124_ID" } } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/124"),
+					httpmock.StringResponse(`{ "node_id": "SUB_124_ID", "number": 124 }`),
 				)
 				reg.Register(
 					httpmock.GraphQLMutationMatcher(`mutation AddSubIssue\b`, func(input map[string]any) bool {
@@ -1188,10 +1160,8 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueNumberGet(t, reg, 100)
 				reg.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issue": { "id": "SUB_123_ID" } } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{ "node_id": "SUB_123_ID", "number": 123 }`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation RemoveSubIssue\b`),
@@ -1220,10 +1190,8 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issue": { "id": "BLOCKING_200_ID" } } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/200"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKING_200_ID", "number": 200 }`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation AddBlockedBy\b`),
@@ -1235,10 +1203,8 @@ func Test_editRun(t *testing.T) {
 						}),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issue": { "id": "BLOCKING_201_ID" } } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/201"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKING_201_ID", "number": 201 }`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation RemoveBlockedBy\b`),
@@ -1266,10 +1232,8 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issue": { "id": "BLOCKED_300_ID" } } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/300"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKED_300_ID", "number": 300 }`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation AddBlockedBy\b`),
@@ -1298,10 +1262,8 @@ func Test_editRun(t *testing.T) {
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`query IssueNodeID\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issue": { "id": "BLOCKED_300_ID" } } } }
-					`),
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/300"),
+					httpmock.StringResponse(`{ "node_id": "BLOCKED_300_ID", "number": 300 }`),
 				)
 				reg.Register(
 					httpmock.GraphQL(`mutation RemoveBlockedBy\b`),
@@ -1330,12 +1292,10 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryIssueTypes\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTypes": { "nodes": [
-						{ "id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" }
-					] } } } }
-					`),
+					httpmock.REST("GET", "orgs/OWNER/issue-types"),
+					httpmock.StringResponse(`[
+						{ "node_id": "BUG_TYPE_ID", "name": "Bug", "description": "", "color": "" }
+					]`),
 				)
 				mockIssueNumberGet(t, reg, 123)
 				mockIssueNumberGet(t, reg, 456)
@@ -1444,7 +1404,10 @@ func Test_editRun(t *testing.T) {
 				FetchOptions: prShared.FetchOptions,
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				mockIssueGetWithRepository(reg, "the original body", 1234, "WRITE")
+				reg.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+					httpmock.StringResponse(`{"node_id":"123","number":123,"html_url":"https://github.com/OWNER/REPO/issue/123","body":"the original body"}`),
+				)
 				reg.Register(
 					httpmock.GraphQL(`mutation IssueUpdate\b`),
 					httpmock.GraphQLMutation(`
@@ -1499,7 +1462,7 @@ func Test_editRun(t *testing.T) {
 				mockIssueGetWithRepository(reg, "the original body", 1234, "WRITE")
 				mockIssueUpdate(t, reg)
 			},
-			wantLookupSelections: []string{"databaseId", "viewerPermission"},
+			wantLookupSelections: []string{"GET /repos/OWNER/REPO\n"},
 			stdout:               "https://github.com/OWNER/REPO/issue/123\n",
 		},
 		{
@@ -1517,7 +1480,7 @@ func Test_editRun(t *testing.T) {
 				mockIssueGet(t, reg)
 				mockIssueUpdate(t, reg)
 			},
-			wantNoLookupSelections: []string{"databaseId", "viewerPermission"},
+			wantNoLookupSelections: []string{"GET /repos/OWNER/REPO\n"},
 			stdout:                 "https://github.com/OWNER/REPO/issue/123\n",
 		},
 		{
@@ -1795,6 +1758,11 @@ type graphQLRecorder struct {
 }
 
 func (g *graphQLRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL != nil {
+		g.mu.Lock()
+		g.queries = append(g.queries, req.Method+" "+req.URL.Path)
+		g.mu.Unlock()
+	}
 	if req.Body != nil && strings.HasSuffix(req.URL.Path, "/graphql") {
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
@@ -1812,7 +1780,7 @@ func (g *graphQLRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
 func (g *graphQLRecorder) recorded() string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return strings.Join(g.queries, "\n")
+	return "\n" + strings.Join(g.queries, "\n") + "\n"
 }
 
 func mockIssueGet(_ *testing.T, reg *httpmock.Registry) {
@@ -1824,59 +1792,71 @@ func mockIssueGet(_ *testing.T, reg *httpmock.Registry) {
 // permission is a value a row can ask for.
 func mockIssueGetWithRepository(reg *httpmock.Registry, body string, databaseID int64, viewerPermission string) {
 	reg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(fmt.Sprintf(`
-			{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-				"id": "123",
-				"number": 123,
-				"url": "https://github.com/OWNER/REPO/issue/123",
-				"body": %s,
-				"repository": { "databaseId": %d, "viewerPermission": %s }
-			} } } }`, strconv.Quote(body), databaseID, strconv.Quote(viewerPermission))),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+		httpmock.StringResponse(fmt.Sprintf(`{
+			"node_id": "123",
+			"number": 123,
+			"html_url": "https://github.com/OWNER/REPO/issue/123",
+			"body": %s
+		}`, strconv.Quote(body))),
+	)
+	permKey := ""
+	switch viewerPermission {
+	case "ADMIN":
+		permKey = `"admin": true`
+	case "MAINTAIN":
+		permKey = `"maintain": true`
+	case "WRITE":
+		permKey = `"push": true`
+	case "TRIAGE":
+		permKey = `"triage": true`
+	case "READ":
+		permKey = `"pull": true`
+	}
+	permsJSON := `{}`
+	if permKey != "" {
+		permsJSON = fmt.Sprintf(`{%s}`, permKey)
+	}
+	reg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(fmt.Sprintf(`{
+			"id": %d,
+			"name": "REPO",
+			"full_name": "OWNER/REPO",
+			"permissions": %s
+		}`, databaseID, permsJSON)),
 	)
 }
 
 func mockIssueNumberGet(_ *testing.T, reg *httpmock.Registry, number int) {
 	reg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(fmt.Sprintf(`
-			{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-				"id": "%[1]d",
-				"number": %[1]d,
-				"url": "https://github.com/OWNER/REPO/issue/%[1]d",
-				"labels": {
-					"nodes": [
-						{ "id": "DOCSID", "name": "docs" }
-					], "totalCount": 1
-				},
-				"projectCards": {
-					"nodes": [
-						{ "project": { "name": "Roadmap" } }
-					], "totalCount": 1
-				}
-			} } } }`, number)),
+		httpmock.REST("GET", fmt.Sprintf("repos/OWNER/REPO/issues/%d", number)),
+		httpmock.StringResponse(fmt.Sprintf(`{
+			"node_id": "%[1]d",
+			"number": %[1]d,
+			"html_url": "https://github.com/OWNER/REPO/issue/%[1]d",
+			"labels": [
+				{ "node_id": "DOCSID", "name": "docs" }
+			]
+		}`, number)),
 	)
 }
 
 func mockIsssueNumberGetWithAssignedActors(_ *testing.T, reg *httpmock.Registry, number int) {
 	reg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(fmt.Sprintf(`
-			{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-				"id": "%[1]d",
-				"number": %[1]d,
-				"url": "https://github.com/OWNER/REPO/issue/%[1]d",
-				"assignedActors": {
-					"nodes": [
-						{
-							"id": "HUBOTID",
-							"login": "hubot",
-							"__typename": "Bot"
-						}
-					],
-					"totalCount": 1
+		httpmock.REST("GET", fmt.Sprintf("repos/OWNER/REPO/issues/%d", number)),
+		httpmock.StringResponse(fmt.Sprintf(`{
+			"node_id": "%[1]d",
+			"number": %[1]d,
+			"html_url": "https://github.com/OWNER/REPO/issue/%[1]d",
+			"assignees": [
+				{
+					"node_id": "HUBOTID",
+					"login": "hubot",
+					"type": "Bot"
 				}
-			} } } }`, number)),
+			]
+		}`, number)),
 	)
 }
 
@@ -2007,7 +1987,13 @@ func Test_editRun_crossHostRelationshipRefs(t *testing.T) {
 			reg := &httpmock.Registry{}
 			defer reg.Verify(t)
 			mockIssueGet(t, reg)
-			// No IssueNodeID stub on purpose: the cross-host guard must
+			if tt.input.Parent != "" || tt.input.RemoveParent {
+				reg.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/issues/123/parent"),
+					httpmock.StatusStringResponse(404, `{"message":"Not Found"}`),
+				)
+			}
+			// No REST issue resolution stub on purpose: the cross-host guard must
 			// short-circuit before any resolution request goes out.
 
 			tt.input.Detector = &fd.EnabledDetectorMock{}
@@ -2028,188 +2014,5 @@ func Test_editRun_crossHostRelationshipRefs(t *testing.T) {
 			require.Error(t, err)
 			assert.Regexp(t, `belongs to a different host \(example\.com\) than the current repository \(github\.com\)`, stderr.String())
 		})
-	}
-}
-
-func TestApiActorsSupported(t *testing.T) {
-	t.Run("when actors are assignable, query includes assignedActors", func(t *testing.T) {
-		ios, _, _, _ := iostreams.Test()
-
-		reg := &httpmock.Registry{}
-		reg.Register(
-			httpmock.GraphQL(`assignedActors`),
-			// Simulate a GraphQL error to early exit the test.
-			httpmock.StatusStringResponse(500, ""),
-		)
-
-		_, cmdTeardown := run.Stub()
-		defer cmdTeardown(t)
-
-		// Ignore the error because we don't care.
-		_ = editRun(&EditOptions{
-			IO: ios,
-			HttpClient: func() (*http.Client, error) {
-				return &http.Client{Transport: reg}, nil
-			},
-			BaseRepo: func() (ghrepo.Interface, error) {
-				return ghrepo.New("OWNER", "REPO"), nil
-			},
-			Detector:     &fd.EnabledDetectorMock{},
-			IssueNumbers: []int{123},
-			Assignees: prShared.EditableAssignees{
-				EditableSlice: prShared.EditableSlice{
-					Add:    []string{"monalisa", "octocat"},
-					Edited: true,
-				},
-			},
-		})
-
-		reg.Verify(t)
-	})
-
-	t.Run("when actors are not assignable, query includes assignees instead", func(t *testing.T) {
-		ios, _, _, _ := iostreams.Test()
-
-		reg := &httpmock.Registry{}
-		// This test should NOT include assignedActors in the query
-		reg.Exclude(t, httpmock.GraphQL(`assignedActors`))
-		// It should include the regular assignees field
-		reg.Register(
-			httpmock.GraphQL(`assignees`),
-			// Simulate a GraphQL error to early exit the test.
-			httpmock.StatusStringResponse(500, ""),
-		)
-
-		_, cmdTeardown := run.Stub()
-		defer cmdTeardown(t)
-
-		// Ignore the error because we're not really interested in it.
-		_ = editRun(&EditOptions{
-			IO: ios,
-			HttpClient: func() (*http.Client, error) {
-				return &http.Client{Transport: reg}, nil
-			},
-			BaseRepo: func() (ghrepo.Interface, error) {
-				return ghrepo.New("OWNER", "REPO"), nil
-			},
-			Detector:     &fd.DisabledDetectorMock{},
-			IssueNumbers: []int{123},
-			Assignees: prShared.EditableAssignees{
-				EditableSlice: prShared.EditableSlice{
-					Add:    []string{"monalisa", "octocat"},
-					Edited: true,
-				},
-			},
-		})
-
-		reg.Verify(t)
-	})
-}
-
-// TODO projectsV1Deprecation
-// Remove this test.
-func TestProjectsV1Deprecation(t *testing.T) {
-	t.Run("when projects v1 is supported, is included in query", func(t *testing.T) {
-		ios, _, _, _ := iostreams.Test()
-
-		reg := &httpmock.Registry{}
-		reg.Register(
-			httpmock.GraphQL(`projectCards`),
-			// Simulate a GraphQL error to early exit the test.
-			httpmock.StatusStringResponse(500, ""),
-		)
-
-		_, cmdTeardown := run.Stub()
-		defer cmdTeardown(t)
-
-		// Ignore the error because we have no way to really stub it without
-		// fully stubbing a GQL error structure in the request body.
-		_ = editRun(&EditOptions{
-			IO: ios,
-			HttpClient: func() (*http.Client, error) {
-				return &http.Client{Transport: reg}, nil
-			},
-			BaseRepo: func() (ghrepo.Interface, error) {
-				return ghrepo.New("OWNER", "REPO"), nil
-			},
-			Detector: &fd.EnabledDetectorMock{},
-
-			IssueNumbers: []int{123},
-			Projects: prShared.EditableProjects{
-				EditableSlice: prShared.EditableSlice{
-					Add:    []string{"Test Project"},
-					Edited: true,
-				},
-			},
-		})
-
-		// Verify that our request contained projectCards
-		reg.Verify(t)
-	})
-
-	t.Run("when projects v1 is not supported, is not included in query", func(t *testing.T) {
-		ios, _, _, _ := iostreams.Test()
-
-		reg := &httpmock.Registry{}
-		reg.Exclude(t, httpmock.GraphQL(`projectCards`))
-
-		reg.Register(
-			httpmock.GraphQL(`.*`),
-			// Simulate a GraphQL error to early exit the test.
-			httpmock.StatusStringResponse(500, ""),
-		)
-
-		_, cmdTeardown := run.Stub()
-		defer cmdTeardown(t)
-
-		// Ignore the error because we're not really interested in it.
-		_ = editRun(&EditOptions{
-			IO: ios,
-			HttpClient: func() (*http.Client, error) {
-				return &http.Client{Transport: reg}, nil
-			},
-			BaseRepo: func() (ghrepo.Interface, error) {
-				return ghrepo.New("OWNER", "REPO"), nil
-			},
-			Detector: &fd.DisabledDetectorMock{},
-
-			IssueNumbers: []int{123},
-			Projects: prShared.EditableProjects{
-				EditableSlice: prShared.EditableSlice{
-					Add:    []string{"Test Project"},
-					Edited: true,
-				},
-			},
-		})
-
-		// Verify that our request contained projectCards
-		reg.Verify(t)
-	})
-}
-
-// issueNodeIDByNumberMatcher matches an IssueNodeID GraphQL query whose
-// number variable equals the given value. Used by tests that issue
-// multiple IssueNodeID lookups and need stubs to route by issue number
-// rather than by registration order.
-func issueNodeIDByNumberMatcher(number int) httpmock.Matcher {
-	queryMatcher := httpmock.GraphQL(`query IssueNodeID\b`)
-	return func(req *http.Request) bool {
-		if !queryMatcher(req) {
-			return false
-		}
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			return false
-		}
-		req.Body = io.NopCloser(bytes.NewReader(body))
-		var b struct {
-			Variables struct {
-				Number int `json:"number"`
-			} `json:"variables"`
-		}
-		if err := json.Unmarshal(body, &b); err != nil {
-			return false
-		}
-		return b.Variables.Number == number
 	}
 }

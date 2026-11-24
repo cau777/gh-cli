@@ -161,12 +161,8 @@ func Test_transferRunSuccessfulIssueTransfer(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "id": "THE-ID", "number": 1234, "title": "The title of the issue"}
-			} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/1234"),
+		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 1234, "title": "The title of the issue"}`))
 
 	http.Register(
 		httpmock.REST("GET", "repos/OWNER1/REPO1"),

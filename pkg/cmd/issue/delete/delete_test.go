@@ -69,12 +69,8 @@ func TestIssueDelete(t *testing.T) {
 	defer httpRegistry.Verify(t)
 
 	httpRegistry.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 	)
 	httpRegistry.Register(
 		httpmock.GraphQL(`mutation IssueDelete\b`),
@@ -104,12 +100,8 @@ func TestIssueDelete_confirm(t *testing.T) {
 	defer httpRegistry.Verify(t)
 
 	httpRegistry.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 	)
 	httpRegistry.Register(
 		httpmock.GraphQL(`mutation IssueDelete\b`),
@@ -136,12 +128,8 @@ func TestIssueDelete_cancel(t *testing.T) {
 	defer httpRegistry.Verify(t)
 
 	httpRegistry.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "id": "THE-ID", "number": 13, "title": "The title of the issue"}
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 	)
 
 	pm := prompter.NewMockPrompter(t)
@@ -163,16 +151,12 @@ func TestIssueDelete_doesNotExist(t *testing.T) {
 	defer httpRegistry.Verify(t)
 
 	httpRegistry.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "errors": [
-				{ "message": "Could not resolve to an Issue with the number of 13." }
-			] }
-			`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+		httpmock.StatusJSONResponse(404, map[string]string{"message": "Not Found"}),
 	)
 
 	_, err := runCommand(httpRegistry, nil, true, "13")
-	if err == nil || err.Error() != "GraphQL: Could not resolve to an Issue with the number of 13." {
+	if err == nil || err.Error() != "HTTP 404: Not Found (https://api.github.com/repos/OWNER/REPO/issues/13)" {
 		t.Errorf("error running command `issue delete`: %v", err)
 	}
 }
@@ -182,26 +166,8 @@ func TestIssueDelete_issuesDisabled(t *testing.T) {
 	defer httpRegistry.Verify(t)
 
 	httpRegistry.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-		{
-			"data": {
-				"repository": {
-					"hasIssuesEnabled": false,
-					"issue": null
-				}
-			},
-			"errors": [
-				{
-					"type": "NOT_FOUND",
-					"path": [
-						"repository",
-						"issue"
-					],
-					"message": "Could not resolve to an issue or pull request with the number of 13."
-				}
-			]
-		}`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
+		httpmock.StatusStringResponse(410, `{"message": "Issues are disabled for this repo"}`),
 	)
 
 	_, err := runCommand(httpRegistry, nil, true, "13")

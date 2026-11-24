@@ -14,11 +14,11 @@ import (
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/text"
+	"github.com/cli/cli/v2/internal/safeurl"
 	issueShared "github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -195,10 +195,13 @@ func listRun(opts *ListOptions) error {
 	}
 
 	if opts.Exporter != nil {
+		if err := api.CheckUnsupportedIssueJSONFields(opts.Exporter.Fields()); err != nil {
+			return err
+		}
 		filterOptions.Fields = opts.Exporter.Fields()
 	}
 
-	listResult, err := issueList(httpClient, opts.Detector, baseRepo, filterOptions, opts.LimitResults)
+	listResult, err := issueList(httpClient, baseRepo, filterOptions, opts.LimitResults)
 	if err != nil {
 		return err
 	}
@@ -229,7 +232,7 @@ func listRun(opts *ListOptions) error {
 	return nil
 }
 
-func issueList(client *http.Client, detector fd.Detector, repo ghrepo.Interface, filters prShared.FilterOptions, limit int) (*api.IssuesAndTotalCount, error) {
+func issueList(client *http.Client, repo ghrepo.Interface, filters prShared.FilterOptions, limit int) (*api.IssuesAndTotalCount, error) {
 	apiClient := api.NewClientFromHTTP(client)
 
 	if filters.Search != "" || len(filters.Labels) > 0 || filters.Milestone != "" || filters.IssueType != "" {
@@ -241,7 +244,7 @@ func issueList(client *http.Client, detector fd.Detector, repo ghrepo.Interface,
 			filters.Milestone = milestone.Title
 		}
 
-		return searchIssues(apiClient, detector, repo, filters, limit)
+		return searchIssues(apiClient, repo, filters, limit)
 	}
 
 	var err error
@@ -263,25 +266,19 @@ func issueList(client *http.Client, detector fd.Detector, repo ghrepo.Interface,
 }
 
 func milestoneByNumber(client *http.Client, repo ghrepo.Interface, number int32) (*api.RepoMilestone, error) {
-	var query struct {
-		Repository struct {
-			Milestone *api.RepoMilestone `graphql:"milestone(number: $number)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	variables := map[string]any{
-		"owner":  githubv4.String(repo.RepoOwner()),
-		"name":   githubv4.String(repo.RepoName()),
-		"number": githubv4.Int(number),
-	}
-
-	gql := api.NewClientFromHTTP(client)
-	if err := gql.Query(repo.RepoHost(), "RepositoryMilestoneByNumber", &query, variables); err != nil {
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "milestones", strconv.FormatInt(int64(number), 10))
+	if err != nil {
 		return nil, err
 	}
-	if query.Repository.Milestone == nil {
-		return nil, fmt.Errorf("no milestone found with number '%d'", number)
+
+	apiClient := api.NewClientFromHTTP(client)
+	var milestone api.RepoMilestone
+	if err := apiClient.REST(repo.RepoHost(), http.MethodGet, p.String(), nil, &milestone); err != nil {
+		if httpErr, ok := err.(api.HTTPError); ok && httpErr.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("no milestone found with number '%d'", number)
+		}
+		return nil, err
 	}
 
-	return query.Repository.Milestone, nil
+	return &milestone, nil
 }

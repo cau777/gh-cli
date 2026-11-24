@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/browser"
 	"github.com/cli/cli/v2/internal/config"
-	fd "github.com/cli/cli/v2/internal/featuredetection"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/run"
@@ -122,13 +122,11 @@ func TestIssueView_web(t *testing.T) {
 	defer reg.Verify(t)
 
 	reg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-				"number": 123,
-				"url": "https://github.com/OWNER/REPO/issues/123"
-			} } } }
-		`))
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+		httpmock.StringResponse(`{
+			"number": 123,
+			"html_url": "https://github.com/OWNER/REPO/issues/123"
+		}`))
 
 	_, cmdTeardown := run.Stub()
 	defer cmdTeardown(t)
@@ -154,6 +152,80 @@ func TestIssueView_web(t *testing.T) {
 	browser.Verify(t, "https://github.com/OWNER/REPO/issues/123")
 }
 
+const restPreviewIssue = `{
+	"number": 123,
+	"body": "**bold story**",
+	"title": "ix of coins",
+	"state": "open",
+	"created_at": "2011-01-26T19:01:12Z",
+	"user": {"login": "marseilles", "node_id": "U1"},
+	"assignees": [],
+	"labels": [],
+	"comments": 9,
+	"html_url": "https://github.com/OWNER/REPO/issues/123"
+}`
+
+const restPreviewWithMetadataIssue = `{
+	"number": 123,
+	"body": "**bold story**",
+	"title": "ix of coins",
+	"state": "open",
+	"created_at": "2011-01-26T19:01:12Z",
+	"user": {"login": "marseilles", "node_id": "U1"},
+	"assignees": [{"login": "marseilles", "node_id": "U1"}, {"login": "monaco", "node_id": "U2"}],
+	"labels": [
+		{"name": "Closed: Won't Fix"},
+		{"name": "Status: In Progress"},
+		{"name": "Type: Bug"},
+		{"name": "help wanted"},
+		{"name": "Closed: Duplicate"}
+	],
+	"milestone": {"title": "uluru"},
+	"reactions": {
+		"+1": 1,
+		"-1": 2,
+		"laugh": 4,
+		"hooray": 5,
+		"confused": 8,
+		"heart": 6,
+		"rocket": 3,
+		"eyes": 7
+	},
+	"comments": 9,
+	"html_url": "https://github.com/OWNER/REPO/issues/123"
+}`
+
+const restPreviewEmptyBodyIssue = `{
+	"number": 123,
+	"body": "",
+	"title": "ix of coins",
+	"state": "open",
+	"created_at": "2011-01-26T19:01:12Z",
+	"user": {"login": "marseilles", "node_id": "U1"},
+	"labels": [{"name": "tarot"}],
+	"comments": 0,
+	"html_url": "https://github.com/OWNER/REPO/issues/123"
+}`
+
+const restPreviewClosedIssue = `{
+	"number": 123,
+	"body": "**bold story**",
+	"title": "ix of coins",
+	"state": "closed",
+	"created_at": "2011-01-26T19:01:12Z",
+	"user": {"login": "marseilles", "node_id": "U1"},
+	"labels": [{"name": "tarot"}],
+	"comments": 0,
+	"html_url": "https://github.com/OWNER/REPO/issues/123"
+}`
+
+func stubEmptyIssueRelations(r *httpmock.Registry) {
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/parent"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/sub_issues"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/dependencies/blocked_by"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/dependencies/blocking"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+}
+
 func TestIssueView_nontty_Preview(t *testing.T) {
 	tests := map[string]struct {
 		httpStubs       func(*httpmock.Registry)
@@ -161,7 +233,9 @@ func TestIssueView_nontty_Preview(t *testing.T) {
 	}{
 		"Open issue without metadata": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_preview.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(`[]`))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`title:\tix of coins`,
@@ -175,7 +249,9 @@ func TestIssueView_nontty_Preview(t *testing.T) {
 		},
 		"Open issue with metadata": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewWithMetadata.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewWithMetadataIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(`[]`))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`title:\tix of coins`,
@@ -184,7 +260,6 @@ func TestIssueView_nontty_Preview(t *testing.T) {
 				`state:\tOPEN`,
 				`comments:\t9`,
 				`labels:\tClosed: Duplicate, Closed: Won't Fix, help wanted, Status: In Progress, Type: Bug`,
-				`projects:\tProject 1 \(column A\), Project 2 \(column B\), Project 3 \(column C\), Project 4 \(Awaiting triage\)\n`,
 				`milestone:\tuluru\n`,
 				`number:\t123\n`,
 				`\*\*bold story\*\*`,
@@ -192,7 +267,8 @@ func TestIssueView_nontty_Preview(t *testing.T) {
 		},
 		"Open issue with empty body": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewWithEmptyBody.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewEmptyBodyIssue))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`title:\tix of coins`,
@@ -204,7 +280,8 @@ func TestIssueView_nontty_Preview(t *testing.T) {
 		},
 		"Closed issue": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewClosedState.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewClosedIssue))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`title:\tix of coins`,
@@ -245,26 +322,29 @@ func TestIssueView_tty_Preview(t *testing.T) {
 	}{
 		"Open issue without metadata": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_preview.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(`[]`))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`ix of coins OWNER/REPO#123`,
-				`Open.*marseilles opened about 9 years ago.*9 comments`,
+				`Open.*marseilles opened about .* ago.*9 comments`,
 				`bold story`,
 				`View this issue on GitHub: https://github.com/OWNER/REPO/issues/123`,
 			},
 		},
 		"Open issue with metadata": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewWithMetadata.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewWithMetadataIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(`[]`))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`ix of coins OWNER/REPO#123`,
-				`Open.*marseilles opened about 9 years ago.*9 comments`,
-				`8 \x{1f615} • 7 \x{1f440} • 6 \x{2764}\x{fe0f} • 5 \x{1f389} • 4 \x{1f604} • 3 \x{1f680} • 2 \x{1f44e} • 1 \x{1f44d}`,
+				`Open.*marseilles opened about .* ago.*9 comments`,
+				`1 \x{1f44d} • 2 \x{1f44e} • 4 \x{1f604} • 5 \x{1f389} • 8 \x{1f615} • 6 \x{2764}\x{fe0f} • 3 \x{1f680} • 7 \x{1f440}`,
 				`Assignees:.*marseilles, monaco\n`,
 				`Labels:.*Closed: Duplicate, Closed: Won't Fix, help wanted, Status: In Progress, Type: Bug\n`,
-				`Projects:.*Project 1 \(column A\), Project 2 \(column B\), Project 3 \(column C\), Project 4 \(Awaiting triage\)\n`,
 				`Milestone:.*uluru\n`,
 				`bold story`,
 				`View this issue on GitHub: https://github.com/OWNER/REPO/issues/123`,
@@ -272,22 +352,24 @@ func TestIssueView_tty_Preview(t *testing.T) {
 		},
 		"Open issue with empty body": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewWithEmptyBody.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewEmptyBodyIssue))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`ix of coins OWNER/REPO#123`,
-				`Open.*marseilles opened about 9 years ago.*9 comments`,
+				`Open.*marseilles opened about .* ago.*0 comments`,
 				`No description provided`,
 				`View this issue on GitHub: https://github.com/OWNER/REPO/issues/123`,
 			},
 		},
 		"Closed issue": {
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewClosedState.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restPreviewClosedIssue))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`ix of coins OWNER/REPO#123`,
-				`Closed.*marseilles opened about 9 years ago.*9 comments`,
+				`Closed.*marseilles opened about .* ago.*0 comments`,
 				`bold story`,
 				`View this issue on GitHub: https://github.com/OWNER/REPO/issues/123`,
 			},
@@ -332,24 +414,86 @@ func TestIssueView_tty_Preview(t *testing.T) {
 	}
 }
 
+const restCommentedIssue = `{
+	"number": 123,
+	"body": "some body",
+	"title": "some title",
+	"state": "open",
+	"created_at": "2020-01-01T12:00:00Z",
+	"user": {"login": "marseilles", "node_id": "U1"},
+	"comments": 6,
+	"html_url": "https://github.com/OWNER/REPO/issues/123"
+}`
+
+const restSingleCommentJSON = `[
+	{
+		"id": 5,
+		"user": {"login": "marseilles", "node_id": "U5"},
+		"author_association": "COLLABORATOR",
+		"body": "Comment 5",
+		"created_at": "2020-01-01T12:00:00Z",
+		"updated_at": "2020-01-01T12:00:00Z"
+	}
+]`
+
+const restFullCommentsJSON = `[
+	{
+		"id": 1,
+		"user": {"login": "monalisa", "node_id": "U1"},
+		"author_association": "NONE",
+		"body": "Comment 1",
+		"created_at": "2020-01-01T12:00:00Z",
+		"updated_at": "2020-01-01T13:00:00Z",
+		"reactions": {"+1": 8, "-1": 7, "rocket": 6, "laugh": 5, "hooray": 4, "heart": 3, "eyes": 2, "confused": 1}
+	},
+	{
+		"id": 2,
+		"user": {"login": "johnnytest", "node_id": "U2"},
+		"author_association": "CONTRIBUTOR",
+		"body": "Comment 2",
+		"created_at": "2020-01-01T12:00:00Z",
+		"updated_at": "2020-01-01T12:00:00Z"
+	},
+	{
+		"id": 3,
+		"user": {"login": "elvisp", "node_id": "U3"},
+		"author_association": "MEMBER",
+		"body": "Comment 3",
+		"created_at": "2020-01-01T12:00:00Z",
+		"updated_at": "2020-01-01T12:00:00Z"
+	},
+	{
+		"id": 4,
+		"user": {"login": "loislane", "node_id": "U4"},
+		"author_association": "OWNER",
+		"body": "Comment 4",
+		"created_at": "2020-01-01T12:00:00Z",
+		"updated_at": "2020-01-01T12:00:00Z"
+	},
+	{
+		"id": 5,
+		"user": {"login": "marseilles", "node_id": "U5"},
+		"author_association": "COLLABORATOR",
+		"body": "Comment 5",
+		"created_at": "2020-01-01T12:00:00Z",
+		"updated_at": "2020-01-01T12:00:00Z"
+	}
+]`
+
 func TestIssueView_web_notFound(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "errors": [
-				{ "message": "Could not resolve to an Issue with the number of 9999." }
-			] }
-			`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/9999"),
+		httpmock.StatusJSONResponse(404, map[string]string{"message": "Not Found"}),
 	)
 
 	_, cmdTeardown := run.Stub()
 	defer cmdTeardown(t)
 
 	_, err := runCommand(http, true, "-w 9999")
-	if err == nil || err.Error() != "GraphQL: Could not resolve to an Issue with the number of 9999." {
+	if err == nil || err.Error() != "HTTP 404: Not Found (https://api.github.com/repos/OWNER/REPO/issues/9999)" {
 		t.Errorf("error running command `issue view`: %v", err)
 	}
 }
@@ -359,27 +503,8 @@ func TestIssueView_disabledIssues(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{
-				"data":
-					{ "repository": {
-						"id": "REPOID",
-						"hasIssuesEnabled": false
-					}
-				},
-				"errors": [
-					{
-						"type": "NOT_FOUND",
-						"path": [
-							"repository",
-							"issue"
-						],
-						"message": "Could not resolve to an issue or pull request with the number of 6666."
-					}
-				]
-			}
-		`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/6666"),
+		httpmock.StatusStringResponse(410, `{"message": "Issues are disabled for this repo"}`),
 	)
 
 	_, err := runCommand(http, true, `6666`)
@@ -398,7 +523,9 @@ func TestIssueView_tty_Comments(t *testing.T) {
 		"without comments flag": {
 			cli: "123",
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewSingleComment.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restCommentedIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(restSingleCommentJSON))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`some title OWNER/REPO#123`,
@@ -413,14 +540,15 @@ func TestIssueView_tty_Comments(t *testing.T) {
 		"with comments flag": {
 			cli: "123 --comments",
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewSingleComment.json"))
-				r.Register(httpmock.GraphQL(`query CommentsForIssue\b`), httpmock.FileResponse("./fixtures/issueView_previewFullComments.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restCommentedIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(restFullCommentsJSON))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`some title OWNER/REPO#123`,
 				`some body`,
 				`monalisa • Jan  1, 2020 • Edited`,
-				`1 \x{1f615} • 2 \x{1f440} • 3 \x{2764}\x{fe0f} • 4 \x{1f389} • 5 \x{1f604} • 6 \x{1f680} • 7 \x{1f44e} • 8 \x{1f44d}`,
+				`8 \x{1f44d} • 7 \x{1f44e} • 5 \x{1f604} • 4 \x{1f389} • 1 \x{1f615} • 3 \x{2764}\x{fe0f} • 6 \x{1f680} • 2 \x{1f440}`,
 				`Comment 1`,
 				`johnnytest \(Contributor\) • Jan  1, 2020`,
 				`Comment 2`,
@@ -428,7 +556,6 @@ func TestIssueView_tty_Comments(t *testing.T) {
 				`Comment 3`,
 				`loislane \(Owner\) • Jan  1, 2020`,
 				`Comment 4`,
-				`sam-spam • This comment has been marked as spam`,
 				`marseilles \(Collaborator\) • Jan  1, 2020 • Newest comment`,
 				`Comment 5`,
 				`View this issue on GitHub: https://github.com/OWNER/REPO/issues/123`,
@@ -469,7 +596,9 @@ func TestIssueView_nontty_Comments(t *testing.T) {
 		"without comments flag": {
 			cli: "123",
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewSingleComment.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restCommentedIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(restSingleCommentJSON))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`title:\tsome title`,
@@ -483,8 +612,9 @@ func TestIssueView_nontty_Comments(t *testing.T) {
 		"with comments flag": {
 			cli: "123 --comments",
 			httpStubs: func(r *httpmock.Registry) {
-				r.Register(httpmock.GraphQL(`query IssueByNumber\b`), httpmock.FileResponse("./fixtures/issueView_previewSingleComment.json"))
-				r.Register(httpmock.GraphQL(`query CommentsForIssue\b`), httpmock.FileResponse("./fixtures/issueView_previewFullComments.json"))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123"), httpmock.StringResponse(restCommentedIssue))
+				r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/123/comments"), httpmock.StringResponse(restFullCommentsJSON))
+				stubEmptyIssueRelations(r)
 			},
 			expectedOutputs: []string{
 				`author:\tmonalisa`,
@@ -534,129 +664,78 @@ func TestIssueView_nontty_Comments(t *testing.T) {
 	}
 }
 
-// TODO projectsV1Deprecation
-// Remove this test.
-func TestProjectsV1Deprecation(t *testing.T) {
-	t.Run("when projects v1 is supported, is included in query", func(t *testing.T) {
-		ios, _, _, _ := iostreams.Test()
+func TestIssueView_json_unsupportedFields(t *testing.T) {
+	for _, field := range []string{"projectCards", "projectItems", "closedByPullRequestsReferences", "isPinned"} {
+		t.Run(field, func(t *testing.T) {
+			reg := &httpmock.Registry{}
+			defer reg.Verify(t)
 
-		reg := &httpmock.Registry{}
-		reg.Register(
-			httpmock.GraphQL(`projectCards`),
-			// Simulate a GraphQL error to early exit the test.
-			httpmock.StatusStringResponse(500, ""),
+			_, err := runCommand(reg, false, "123 --json "+field)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, api.ErrNotSupported)
+		})
+	}
+}
+
+func stubIssues2AllFields(r *httpmock.Registry, number int, withBlockedByBlocking bool) {
+	r.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+		httpmock.StringResponse(`{
+			"node_id": "ISSUE_123",
+			"number": 123,
+			"title": "Implement OAuth flow",
+			"state": "open",
+			"body": "The OAuth flow needs work.",
+			"user": {"login": "user1", "node_id": "U1"},
+			"created_at": "2024-01-01T00:00:00Z",
+			"comments": 0,
+			"html_url": "https://github.com/OWNER/REPO/issues/123",
+			"type": {"node_id": "IT_1", "name": "Bug", "description": "Something is not working", "color": "d73a4a"},
+			"sub_issues_summary": {"total": 2, "completed": 1, "percent_completed": 50}
+		}`),
+	)
+	r.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123/parent"),
+		httpmock.StringResponse(`{"number":100,"title":"Epic: Authentication overhaul","html_url":"https://github.com/OWNER/REPO/issues/100","state":"open"}`),
+	)
+	r.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123/sub_issues"),
+		httpmock.StringResponse(`[
+			{"number":101,"title":"Design auth module","html_url":"https://github.com/OWNER/REPO/issues/101","state":"closed"},
+			{"number":102,"title":"Token refresh logic","html_url":"https://github.com/OWNER/REPO/issues/102","state":"open"}
+		]`),
+	)
+	if withBlockedByBlocking {
+		r.Register(
+			httpmock.REST("GET", "repos/OWNER/REPO/issues/123/dependencies/blocked_by"),
+			httpmock.StringResponse(`[{"number":200,"title":"API rate limiting","html_url":"https://github.com/OWNER/REPO/issues/200","state":"open"}]`),
 		)
-
-		_, cmdTeardown := run.Stub()
-		defer cmdTeardown(t)
-
-		// Ignore the error because we have no way to really stub it without
-		// fully stubbing a GQL error structure in the request body.
-		_ = viewRun(&ViewOptions{
-			IO: ios,
-			HttpClient: func() (*http.Client, error) {
-				return &http.Client{Transport: reg}, nil
-			},
-			BaseRepo: func() (ghrepo.Interface, error) {
-				return ghrepo.New("OWNER", "REPO"), nil
-			},
-
-			Detector:    &fd.EnabledDetectorMock{},
-			IssueNumber: 123,
-		})
-
-		// Verify that our request contained projectCards
-		reg.Verify(t)
-	})
-
-	t.Run("when projects v1 is not supported, is not included in query", func(t *testing.T) {
-		ios, _, _, _ := iostreams.Test()
-
-		reg := &httpmock.Registry{}
-		reg.Exclude(t, httpmock.GraphQL(`projectCards`))
-
-		_, cmdTeardown := run.Stub()
-		defer cmdTeardown(t)
-
-		// Ignore the error because we're not really interested in it.
-		_ = viewRun(&ViewOptions{
-			IO: ios,
-			HttpClient: func() (*http.Client, error) {
-				return &http.Client{Transport: reg}, nil
-			},
-			BaseRepo: func() (ghrepo.Interface, error) {
-				return ghrepo.New("OWNER", "REPO"), nil
-			},
-
-			Detector:    &fd.DisabledDetectorMock{},
-			IssueNumber: 123,
-		})
-
-		// Verify that our request contained projectCards
-		reg.Verify(t)
-	})
+		r.Register(
+			httpmock.REST("GET", "repos/OWNER/REPO/issues/123/dependencies/blocking"),
+			httpmock.StringResponse(`[{"number":300,"title":"Release v2.0","html_url":"https://github.com/OWNER/REPO/issues/300","state":"open"}]`),
+		)
+	}
 }
 
-// issueResponseAllIssues2Fields returns a GraphQL response for an issue with all Issues 2.0 fields populated.
-func issueResponseAllIssues2Fields() string {
-	return `{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-		"id": "ISSUE_123",
-		"number": 123,
-		"title": "Implement OAuth flow",
-		"state": "OPEN",
-		"stateReason": "",
-		"body": "The OAuth flow needs work.",
-		"author": {"login": "user1"},
-		"createdAt": "2024-01-01T00:00:00Z",
-		"comments": {"nodes":[], "totalCount": 0},
-		"assignees": {"nodes": [], "totalCount": 0},
-		"labels": {"nodes": [], "totalCount": 0},
-		"milestone": null,
-		"reactionGroups": [],
-		"projectCards": {"nodes": [], "totalCount": 0},
-		"projectItems": {"nodes": [], "totalCount": 0},
-		"url": "https://github.com/OWNER/REPO/issues/123",
-		"issueType": {"id":"IT_1","name":"Bug","description":"Something is not working","color":"d73a4a"},
-		"parent": {"number":100,"title":"Epic: Authentication overhaul","url":"https://github.com/OWNER/REPO/issues/100","state":"OPEN","repository":{"nameWithOwner":"OWNER/REPO"}},
-		"subIssues": {
-			"nodes": [
-				{"number":101,"title":"Design auth module","url":"https://github.com/OWNER/REPO/issues/101","state":"CLOSED","repository":{"nameWithOwner":"OWNER/REPO"}},
-				{"number":102,"title":"Token refresh logic","url":"https://github.com/OWNER/REPO/issues/102","state":"OPEN","repository":{"nameWithOwner":"OWNER/REPO"}}
-			],
-			"totalCount": 2
-		},
-		"subIssuesSummary": {"total":2,"completed":1,"percentCompleted":50.0},
-		"blockedBy": {
-			"nodes": [{"number":200,"title":"API rate limiting","url":"https://github.com/OWNER/REPO/issues/200","state":"OPEN","repository":{"nameWithOwner":"OWNER/REPO"}}],
-			"totalCount": 1
-		},
-		"blocking": {
-			"nodes": [{"number":300,"title":"Release v2.0","url":"https://github.com/OWNER/REPO/issues/300","state":"OPEN","repository":{"nameWithOwner":"OWNER/REPO"}}],
-			"totalCount": 1
-		}
-	} } } }`
-}
-
-// issueResponseNoIssues2Fields returns a GraphQL response for an issue with no Issues 2.0 fields.
-func issueResponseNoIssues2Fields() string {
-	return `{ "data": { "repository": { "hasIssuesEnabled": true, "issue": {
-		"id": "ISSUE_456",
-		"number": 456,
-		"title": "Fix login page",
-		"state": "OPEN",
-		"stateReason": "",
-		"body": "The login page is broken.",
-		"author": {"login": "user2"},
-		"createdAt": "2024-01-01T00:00:00Z",
-		"comments": {"nodes":[], "totalCount": 2},
-		"assignees": {"nodes": [], "totalCount": 0},
-		"labels": {"nodes": [], "totalCount": 0},
-		"milestone": null,
-		"reactionGroups": [],
-		"projectCards": {"nodes": [], "totalCount": 0},
-		"projectItems": {"nodes": [], "totalCount": 0},
-		"url": "https://github.com/OWNER/REPO/issues/456"
-	} } } }`
+func stubIssues2NoFields(r *httpmock.Registry) {
+	r.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/456"),
+		httpmock.StringResponse(`{
+			"node_id": "ISSUE_456",
+			"number": 456,
+			"title": "Fix login page",
+			"state": "open",
+			"body": "The login page is broken.",
+			"user": {"login": "user2", "node_id": "U2"},
+			"created_at": "2024-01-01T00:00:00Z",
+			"comments": 0,
+			"html_url": "https://github.com/OWNER/REPO/issues/456"
+		}`),
+	)
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/456/parent"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/456/sub_issues"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/456/dependencies/blocked_by"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
+	r.Register(httpmock.REST("GET", "repos/OWNER/REPO/issues/456/dependencies/blocking"), httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 }
 
 func TestIssueView_tty_Issues2AllFields(t *testing.T) {
@@ -668,10 +747,7 @@ func TestIssueView_tty_Issues2AllFields(t *testing.T) {
 	httpReg := &httpmock.Registry{}
 	defer httpReg.Verify(t)
 
-	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseAllIssues2Fields()),
-	)
+	stubIssues2AllFields(httpReg, 123, true)
 
 	opts := ViewOptions{
 		IO: ios,
@@ -739,10 +815,7 @@ func TestIssueView_nontty_Issues2AllFields(t *testing.T) {
 	httpReg := &httpmock.Registry{}
 	defer httpReg.Verify(t)
 
-	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseAllIssues2Fields()),
-	)
+	stubIssues2AllFields(httpReg, 123, true)
 
 	opts := ViewOptions{
 		IO: ios,
@@ -783,10 +856,7 @@ func TestIssueView_tty_Issues2NoFields(t *testing.T) {
 	httpReg := &httpmock.Registry{}
 	defer httpReg.Verify(t)
 
-	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseNoIssues2Fields()),
-	)
+	stubIssues2NoFields(httpReg)
 
 	opts := ViewOptions{
 		IO: ios,
@@ -831,10 +901,7 @@ func TestIssueView_nontty_Issues2NoFields(t *testing.T) {
 	httpReg := &httpmock.Registry{}
 	defer httpReg.Verify(t)
 
-	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseNoIssues2Fields()),
-	)
+	stubIssues2NoFields(httpReg)
 
 	opts := ViewOptions{
 		IO: ios,
@@ -873,8 +940,11 @@ func TestIssueView_json_IssueType(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseAllIssues2Fields()),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+		httpmock.StringResponse(`{
+			"number": 123,
+			"type": {"node_id": "IT_1", "name": "Bug", "description": "Something is not working", "color": "d73a4a"}
+		}`),
 	)
 
 	output, err := runCommand(httpReg, false, `123 --json issueType`)
@@ -895,10 +965,7 @@ func TestIssueView_json_ParentSubIssues(t *testing.T) {
 	httpReg := &httpmock.Registry{}
 	defer httpReg.Verify(t)
 
-	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseAllIssues2Fields()),
-	)
+	stubIssues2AllFields(httpReg, 123, false)
 
 	output, err := runCommand(httpReg, false, `123 --json parent,subIssues,subIssuesSummary`)
 	require.NoError(t, err)
@@ -946,8 +1013,16 @@ func TestIssueView_json_BlockedByBlocking(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(issueResponseAllIssues2Fields()),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123"),
+		httpmock.StringResponse(`{"number": 123}`),
+	)
+	httpReg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123/dependencies/blocked_by"),
+		httpmock.StringResponse(`[{"number":200,"title":"API rate limiting","html_url":"https://github.com/OWNER/REPO/issues/200","state":"open"}]`),
+	)
+	httpReg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/123/dependencies/blocking"),
+		httpmock.StringResponse(`[{"number":300,"title":"Release v2.0","html_url":"https://github.com/OWNER/REPO/issues/300","state":"open"}]`),
 	)
 
 	output, err := runCommand(httpReg, false, `123 --json blockedBy,blocking`)

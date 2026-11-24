@@ -115,6 +115,9 @@ func viewRun(opts *ViewOptions) error {
 
 	lookupFields := set.NewStringSet()
 	if opts.Exporter != nil {
+		if err := api.CheckUnsupportedIssueJSONFields(opts.Exporter.Fields()); err != nil {
+			return err
+		}
 		lookupFields.AddValues(opts.Exporter.Fields())
 	} else if opts.WebMode {
 		lookupFields.Add("url")
@@ -155,20 +158,6 @@ func viewRun(opts *ViewOptions) error {
 	issue, err := issueShared.FindIssueOrPR(httpClient, baseRepo, opts.IssueNumber, lookupFields.ToSlice())
 	if err != nil {
 		return err
-	}
-
-	if lookupFields.Contains("comments") {
-		err := preloadIssueComments(httpClient, baseRepo, issue)
-		if err != nil {
-			return err
-		}
-	}
-
-	if lookupFields.Contains("closedByPullRequestsReferences") {
-		err := preloadClosedByPullRequestsReferences(httpClient, baseRepo, issue)
-		if err != nil {
-			return err
-		}
 	}
 
 	opts.IO.StopProgressIndicator()

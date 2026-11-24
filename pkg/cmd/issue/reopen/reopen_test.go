@@ -67,12 +67,8 @@ func TestIssueReopen(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "id": "THE-ID", "number": 2, "state": "CLOSED", "title": "The title of the issue"}
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/2"),
+		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 2, "state": "closed", "title": "The title of the issue"}`),
 	)
 	http.Register(
 		httpmock.GraphQL(`mutation IssueReopen\b`),
@@ -99,12 +95,8 @@ func TestIssueReopen_alreadyOpen(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "number": 2, "state": "OPEN", "title": "The title of the issue"}
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/2"),
+		httpmock.StringResponse(`{ "number": 2, "state": "open", "title": "The title of the issue"}`),
 	)
 
 	output, err := runCommand(http, true, "2")
@@ -124,26 +116,8 @@ func TestIssueReopen_issuesDisabled(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-		{
-			"data": {
-				"repository": {
-					"hasIssuesEnabled": false,
-					"issue": null
-				}
-			},
-			"errors": [
-				{
-					"type": "NOT_FOUND",
-					"path": [
-						"repository",
-						"issue"
-					],
-					"message": "Could not resolve to an issue or pull request with the number of 2."
-				}
-			]
-		}`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/2"),
+		httpmock.StatusStringResponse(410, `{"message": "Issues are disabled for this repo"}`),
 	)
 
 	_, err := runCommand(http, true, "2")
@@ -157,12 +131,8 @@ func TestIssueReopen_withComment(t *testing.T) {
 	defer http.Verify(t)
 
 	http.Register(
-		httpmock.GraphQL(`query IssueByNumber\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": {
-				"hasIssuesEnabled": true,
-				"issue": { "id": "THE-ID", "number": 2, "state": "CLOSED", "title": "The title of the issue"}
-			} } }`),
+		httpmock.REST("GET", "repos/OWNER/REPO/issues/2"),
+		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 2, "state": "closed", "title": "The title of the issue"}`),
 	)
 	http.Register(
 		httpmock.REST("POST", "repos/OWNER/REPO/issues/2/comments"),

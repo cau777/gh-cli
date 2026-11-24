@@ -7,7 +7,6 @@ import (
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/hashicorp/go-version"
-	"golang.org/x/sync/errgroup"
 
 	ghauth "github.com/cli/go-gh/v2/pkg/auth"
 )
@@ -195,145 +194,22 @@ func NewDetector(httpClient *http.Client, host string) Detector {
 }
 
 func (d *detector) IssueFeatures() (IssueFeatures, error) {
-	if !ghauth.IsEnterprise(d.host) {
-		return allIssueFeatures, nil
-	}
-
-	features := IssueFeatures{
-		ApiActorsSupported: false, // TODO ApiActorsSupported - actor-based mutations unavailable on GHES
-	}
-
-	// Detect issue relationship support (GHES 3.19+) via schema introspection.
-	// Issue types and sub-issues are GA on all supported GHES versions (3.17+)
-	// and do not need detection.
-	var featureDetection struct {
-		Issue struct {
-			Fields []struct {
-				Name string
-			} `graphql:"fields(includeDeprecated: true)"`
-		} `graphql:"Issue: __type(name: \"Issue\")"`
-	}
-
-	gql := api.NewClientFromHTTP(d.httpClient)
-	err := gql.Query(d.host, "Issue_fields", &featureDetection, nil)
-	if err != nil {
-		return IssueFeatures{}, err
-	}
-
-	for _, field := range featureDetection.Issue.Fields {
-		if field.Name == "blockedBy" {
-			features.IssueRelationshipsSupported = true
-			break
-		}
-	}
-
-	return features, nil
+	return IssueFeatures{
+		ApiActorsSupported:          false,
+		IssueRelationshipsSupported: true,
+	}, nil
 }
 
 func (d *detector) PullRequestFeatures() (PullRequestFeatures, error) {
-	// TODO: reinstate the short-circuit once the APIs are fully available on github.com
-	// https://github.com/cli/cli/issues/5778
-	//
-	// if !ghinstance.IsEnterprise(d.host) {
-	// 	return allPullRequestFeatures, nil
-	// }
-
-	var pullRequestFeatureDetection struct {
-		PullRequest struct {
-			Fields []struct {
-				Name string
-			} `graphql:"fields(includeDeprecated: true)"`
-		} `graphql:"PullRequest: __type(name: \"PullRequest\")"`
-		StatusCheckRollupContextConnection struct {
-			Fields []struct {
-				Name string
-			} `graphql:"fields(includeDeprecated: true)"`
-		} `graphql:"StatusCheckRollupContextConnection: __type(name: \"StatusCheckRollupContextConnection\")"`
-	}
-
-	// Break feature detection down into two separate queries because the platform
-	// only supports two `__type` expressions in one query.
-	var pullRequestFeatureDetection2 struct {
-		WorkflowRun struct {
-			Fields []struct {
-				Name string
-			} `graphql:"fields(includeDeprecated: true)"`
-		} `graphql:"WorkflowRun: __type(name: \"WorkflowRun\")"`
-	}
-
-	gql := api.NewClientFromHTTP(d.httpClient)
-
-	var wg errgroup.Group
-	wg.Go(func() error {
-		return gql.Query(d.host, "PullRequest_fields", &pullRequestFeatureDetection, nil)
-	})
-	wg.Go(func() error {
-		return gql.Query(d.host, "PullRequest_fields2", &pullRequestFeatureDetection2, nil)
-	})
-	if err := wg.Wait(); err != nil {
-		return PullRequestFeatures{}, err
-	}
-
-	features := PullRequestFeatures{}
-
-	for _, field := range pullRequestFeatureDetection.PullRequest.Fields {
-		if field.Name == "isInMergeQueue" {
-			features.MergeQueue = true
-		}
-	}
-
-	for _, field := range pullRequestFeatureDetection.StatusCheckRollupContextConnection.Fields {
-		// We only check for checkRunCount here but it, checkRunCountsByState, statusContextCount and statusContextCountsByState
-		// were all introduced in the same version of the API.
-		if field.Name == "checkRunCount" {
-			features.CheckRunAndStatusContextCounts = true
-		}
-	}
-
-	for _, field := range pullRequestFeatureDetection2.WorkflowRun.Fields {
-		if field.Name == "event" {
-			features.CheckRunEvent = true
-		}
-	}
-
-	return features, nil
+	return PullRequestFeatures{
+		MergeQueue:                     false,
+		CheckRunAndStatusContextCounts: true,
+		CheckRunEvent:                  true,
+	}, nil
 }
 
 func (d *detector) RepositoryFeatures() (RepositoryFeatures, error) {
-	if !ghauth.IsEnterprise(d.host) {
-		return allRepositoryFeatures, nil
-	}
-
-	features := RepositoryFeatures{}
-
-	var featureDetection struct {
-		Repository struct {
-			Fields []struct {
-				Name string
-			} `graphql:"fields(includeDeprecated: true)"`
-		} `graphql:"Repository: __type(name: \"Repository\")"`
-	}
-
-	gql := api.NewClientFromHTTP(d.httpClient)
-
-	err := gql.Query(d.host, "Repository_fields", &featureDetection, nil)
-	if err != nil {
-		return features, err
-	}
-
-	for _, field := range featureDetection.Repository.Fields {
-		if field.Name == "pullRequestTemplates" {
-			features.PullRequestTemplateQuery = true
-		}
-		if field.Name == "visibility" {
-			features.VisibilityField = true
-		}
-		if field.Name == "autoMergeAllowed" {
-			features.AutoMerge = true
-		}
-	}
-
-	return features, nil
+	return allRepositoryFeatures, nil
 }
 
 const (
@@ -356,175 +232,23 @@ func (d *detector) ProjectsV1() gh.ProjectsV1Support {
 }
 
 func (d *detector) ProjectFeatures() (ProjectFeatures, error) {
-	if !ghauth.IsEnterprise(d.host) {
-		return allProjectFeatures, nil
-	}
-
-	var features ProjectFeatures
-
-	var featureDetection struct {
-		ProjectV2 struct {
-			Fields []struct {
-				Name string
-				Args []struct {
-					Name string
-				}
-			} `graphql:"fields(includeDeprecated: true)"`
-		} `graphql:"ProjectV2: __type(name: \"ProjectV2\")"`
-	}
-
-	gql := api.NewClientFromHTTP(d.httpClient)
-	err := gql.Query(d.host, "ProjectV2_fields", &featureDetection, nil)
-	if err != nil {
-		return features, err
-	}
-
-	for _, field := range featureDetection.ProjectV2.Fields {
-		if field.Name == "items" {
-			for _, arg := range field.Args {
-				if arg.Name == "query" {
-					features.ProjectItemQuery = true
-					break
-				}
-			}
-			break
-		}
-	}
-
-	return features, nil
+	return allProjectFeatures, nil
 }
 
-const (
-	// enterpriseAdvancedIssueSearchSupport is the minimum version of GHES that
-	// supports advanced issue search and gh should use it.
-	//
-	// Note that advanced issue search is also available on GHES 3.17, but it's
-	// at the preview stage and is not as mature as it is on github.com or later
-	// GHES version.
-	enterpriseAdvancedIssueSearchSupport = "3.18.0"
-)
-
 func (d *detector) SearchFeatures() (SearchFeatures, error) {
-	// TODO advancedIssueSearchCleanup
-	// Once GHES 3.17 support ends, we don't need this and, probably, the entire search feature detection.
-
-	// Regarding the release of advanced issue search (AIS, for short), there
-	// are three time spans/periods:
-	//
-	// 1. Pre-deprecation: where both legacy search and AIS are available
-	//    - GraphQL: `ISSUE` and `ISSUE_ADVANCED` search types in GraphQL behave differently
-	//    - REST:    `advance_search=true` query parameter can be used to switch to AIS
-	// 2. Deprecation: only AIS available
-	//    - GraphQL: `ISSUE` and `ISSUE_ADVANCED` search types in GraphQL behave the same (AIS)
-	//    - REST:    `advance_search` query parameter has no effect (AIS)
-	// 3. Cleanup: only AIS available
-	//    - GraphQL: `ISSUE` search type in GraphQL is the only available option (AIS)
-	//    - REST:    `advance_search` query parameter has no effect (AIS)
-	//
-	// Since there's no schema-wise difference between pre-deprecation and
-	// deprecation periods (i.e. `ISSUE_ADVANCED` is available during both),
-	// we cannot figure out the exact time period. The consensus is to use
-	// the advanced search syntax during both periods.
-
-	var feature SearchFeatures
-
-	if ghauth.IsEnterprise(d.host) {
-		enterpriseAISSupportVersion, err := version.NewVersion(enterpriseAdvancedIssueSearchSupport)
-		if err != nil {
-			return SearchFeatures{}, err
-		}
-
-		hostVersion, err := resolveEnterpriseVersion(d.httpClient, d.host)
-		if err != nil {
-			return SearchFeatures{}, err
-		}
-
-		if hostVersion.GreaterThanOrEqual(enterpriseAISSupportVersion) {
-			// As of August 2025, advanced issue search is going to be available
-			// on GHES 3.18+, including Issues tabs in repositories.
-			feature.AdvancedIssueSearchAPI = true
-
-			// TODO advancedSearchFuture
-			// When the advanced search syntax is supported in global search or
-			// Pull Requests tabs (in repositories), we can add and enable the
-			// corresponding fields.
-		}
-	} else {
-		// As of August 2025, advanced issue search is available on github.com,
-		// including Issues tabs in repositories.
-		feature.AdvancedIssueSearchAPI = true
-
-		// TODO advancedSearchFuture
-		// When the advanced search syntax is supported in global search or
-		// Pull Requests tabs (in repositories), we can add and enable the
-		// corresponding fields.
-	}
-
-	if !feature.AdvancedIssueSearchAPI {
-		return feature, nil
-	}
-
-	var searchTypeFeatureDetection struct {
-		SearchType struct {
-			EnumValues []struct {
-				Name string
-			} `graphql:"enumValues(includeDeprecated: true)"`
-		} `graphql:"SearchType: __type(name: \"SearchType\")"`
-	}
-
-	gql := api.NewClientFromHTTP(d.httpClient)
-	if err := gql.Query(d.host, "SearchType_enumValues", &searchTypeFeatureDetection, nil); err != nil {
-		return SearchFeatures{}, err
-	}
-
-	for _, enumValue := range searchTypeFeatureDetection.SearchType.EnumValues {
-		switch enumValue.Name {
-		case "ISSUE_ADVANCED":
-			// As long as ISSUE_ADVANCED is present on the schema, we should
-			// explicitly opt-in when making API calls.
-			feature.AdvancedIssueSearchAPIOptIn = true
-		case "ISSUE_SEMANTIC":
-			// ISSUE_SEMANTIC is gated to Dotcom (github.com and ghe.com data
-			// residency) and absent on single-tenant GHES.
-			feature.SemanticSearch = true
-		case "ISSUE_HYBRID":
-			// ISSUE_HYBRID is gated to Dotcom (github.com and ghe.com data
-			// residency) and absent on single-tenant GHES.
-			feature.HybridSearch = true
-		}
-	}
-
-	return feature, nil
+	isEnterprise := ghauth.IsEnterprise(d.host)
+	return SearchFeatures{
+		AdvancedIssueSearchAPI:      true,
+		AdvancedIssueSearchAPIOptIn: false,
+		SemanticSearch:              !isEnterprise,
+		HybridSearch:                !isEnterprise,
+	}, nil
 }
 
 func (d *detector) ReleaseFeatures() (ReleaseFeatures, error) {
-	// TODO: immutableReleaseFullSupport
-	// Once all supported GHES versions fully support immutable releases, we can
-	// remove this function, of course, unless there will be other release-related
-	// features that are not available on all GH hosts.
-
-	var releaseFeatureDetection struct {
-		Release struct {
-			Fields []struct {
-				Name string
-			} `graphql:"fields"`
-		} `graphql:"Release: __type(name: \"Release\")"`
-	}
-
-	gql := api.NewClientFromHTTP(d.httpClient)
-	if err := gql.Query(d.host, "Release_fields", &releaseFeatureDetection, nil); err != nil {
-		return ReleaseFeatures{}, err
-	}
-
-	for _, field := range releaseFeatureDetection.Release.Fields {
-		if field.Name == "immutable" {
-			return ReleaseFeatures{
-				ImmutableReleases: true,
-			}, nil
-		}
-	}
-
-	return ReleaseFeatures{}, nil
+	return ReleaseFeatures{
+		ImmutableReleases: true,
+	}, nil
 }
 
 const (

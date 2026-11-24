@@ -255,10 +255,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -284,19 +282,15 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 123,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "13",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"ORIGINOWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 123,
+							"state": "open",
+							"base": {"ref": "main"},
+							"head": {"ref": "13", "user": {"login": "ORIGINOWNER"}}
+						}
+					]`))
 			},
 			wantPR:   123,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -360,10 +354,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -385,10 +377,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:   13,
 			wantRepo: "https://example.org/OWNER/REPO",
@@ -419,10 +409,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:   13,
 			wantRepo: "https://example.org/OWNER/REPO",
@@ -445,27 +433,21 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 14,
-								"state": "CLOSED",
-								"baseRefName": "main",
-								"headRefName": "blueberries",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"ORIGINOWNER"}
-							},
-							{
-								"number": 13,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "blueberries",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"ORIGINOWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 14,
+							"state": "closed",
+							"base": {"ref": "main"},
+							"head": {"ref": "blueberries", "user": {"login": "ORIGINOWNER"}}
+						},
+						{
+							"number": 13,
+							"state": "open",
+							"base": {"ref": "main"},
+							"head": {"ref": "blueberries", "user": {"login": "ORIGINOWNER"}}
+						}
+					]`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -491,27 +473,21 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 14,
-								"state": "OPEN",
-								"baseRefName": "dev",
-								"headRefName": "blueberries",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"OWNER"}
-							},
-							{
-								"number": 13,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "blueberries",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"OWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 14,
+							"state": "open",
+							"base": {"ref": "dev"},
+							"head": {"ref": "blueberries", "user": {"login": "OWNER"}}
+						},
+						{
+							"number": 13,
+							"state": "open",
+							"base": {"ref": "main"},
+							"head": {"ref": "blueberries", "user": {"login": "OWNER"}}
+						}
+					]`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -536,19 +512,15 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 13,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "blueberries",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"OWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 13,
+							"state": "open",
+							"base": {"ref": "main"},
+							"head": {"ref": "blueberries", "user": {"login": "OWNER"}}
+						}
+					]`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -573,22 +545,16 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 13,
-								"state": "MERGED",
-								"baseRefName": "main",
-								"headRefName": "blueberries",
-								"isCrossRepository": false,
-								"headRepositoryOwner": {"login":"OWNER"}
-							}
-						]},
-						"defaultBranchRef":{
-							"name": "blueberries"
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 13,
+							"state": "closed",
+							"merged_at": "2020-01-01T00:00:00Z",
+							"base": {"ref": "main", "repo": {"default_branch": "blueberries"}},
+							"head": {"ref": "blueberries", "user": {"login": "OWNER"}}
 						}
-					}}}`))
+					]`))
 			},
 			wantErr: true,
 		},
@@ -627,19 +593,15 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 13,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "blue-upstream-berries",
-								"isCrossRepository": true,
-								"headRepositoryOwner": {"login":"UPSTREAMOWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 13,
+							"state": "open",
+							"base": {"ref": "main", "repo": {"full_name": "ORIGINOWNER/REPO"}},
+							"head": {"ref": "blue-upstream-berries", "user": {"login": "UPSTREAMOWNER"}, "repo": {"full_name": "UPSTREAMOWNER/REPO"}}
+						}
+					]`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -669,19 +631,15 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 13,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "blue-upstream-berries",
-								"isCrossRepository": true,
-								"headRepositoryOwner": {"login":"UPSTREAMOWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 13,
+							"state": "open",
+							"base": {"ref": "main", "repo": {"full_name": "ORIGINOWNER/REPO"}},
+							"head": {"ref": "blue-upstream-berries", "user": {"login": "UPSTREAMOWNER"}, "repo": {"full_name": "UPSTREAMOWNER/REPO"}}
+						}
+					]`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -704,19 +662,15 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestForBranch\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequests":{"nodes":[
-							{
-								"number": 13,
-								"state": "OPEN",
-								"baseRefName": "main",
-								"headRefName": "blueberries",
-								"isCrossRepository": true,
-								"headRepositoryOwner": {"login":"ORIGINOWNER"}
-							}
-						]}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls"),
+					httpmock.StringResponse(`[
+						{
+							"number": 13,
+							"state": "open",
+							"base": {"ref": "main", "repo": {"full_name": "ORIGINOWNER/REPO"}},
+							"head": {"ref": "blueberries", "user": {"login": "ORIGINOWNER"}, "repo": {"full_name": "ORIGINOWNER/OTHER-REPO"}}
+						}
+					]`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/ORIGINOWNER/REPO",
@@ -740,10 +694,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -769,46 +721,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
-
-				r.Register(
-					httpmock.GraphQL(`query PullRequestProjectItems\b`),
-					httpmock.GraphQLQuery(`{
-		                "data": {
-		                  "repository": {
-		                    "pullRequest": {
-		                      "projectItems": {
-		                        "nodes": [
-		                          {
-		                            "id": "PVTI_lADOB-vozM4AVk16zgK6U50",
-		                            "project": {
-		                              "id": "PVT_kwDOB-vozM4AVk16",
-		                              "title": "Test Project"
-		                            },
-		                            "status": {
-		                              "optionId": "47fc9ee4",
-		                              "name": "In Progress"
-		                            }
-		                          }
-		                        ],
-		                        "pageInfo": {
-		                          "hasNextPage": false,
-		                          "endCursor": "MQ"
-		                        }
-		                      }
-		                    }
-		                  }
-		                }
-		              }`,
-						func(query string, inputs map[string]any) {
-							require.Equal(t, float64(13), inputs["number"])
-							require.Equal(t, "OWNER", inputs["owner"])
-							require.Equal(t, "REPO", inputs["name"])
-						}),
-				)
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:   13,
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -826,10 +740,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:          13,
 			wantRepo:        "https://github.com/ORIGINOWNER/REPO",
@@ -849,10 +761,8 @@ func TestFind(t *testing.T) {
 			},
 			httpStub: func(r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
-					httpmock.StringResponse(`{"data":{"repository":{
-						"pullRequest":{"number":13}
-					}}}`))
+					httpmock.REST("GET", "repos/ORIGINOWNER/REPO/pulls/13"),
+					httpmock.StringResponse(`{"number":13}`))
 			},
 			wantPR:          13,
 			wantRepo:        "https://github.com/ORIGINOWNER/REPO",

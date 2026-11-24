@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -394,7 +393,7 @@ func TestNewCmdComment(t *testing.T) {
 				Body:        "",
 			},
 			isTTY:      true,
-			queryWants: "databaseId",
+			queryWants: "/repos/OWNER/REPO/pulls/1",
 		},
 		{
 			name:  "the pull request lookup does not ask for the repository id without --attach",
@@ -406,7 +405,7 @@ func TestNewCmdComment(t *testing.T) {
 				BodyProvided: true,
 			},
 			isTTY:      true,
-			queryOmits: "databaseId",
+			queryOmits: "graphql",
 		},
 	}
 
@@ -430,22 +429,22 @@ func TestNewCmdComment(t *testing.T) {
 			var lookupQuery string
 			if checksQuery {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestByNumber\b`),
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls/1"),
 					func(req *http.Request) (*http.Response, error) {
-						body, err := io.ReadAll(req.Body)
-						require.NoError(t, err)
-						lookupQuery = string(body)
-						return httpmock.StringResponse(`{"data":{"repository":{"pullRequest":{
-							"id": "PR_id",
+						lookupQuery = req.URL.String()
+						return httpmock.StringResponse(`{
+							"node_id": "PR_id",
 							"number": 1,
-							"url": "https://github.com/OWNER/REPO/pull/1",
-							"repository": {
-								"id": "R_kgDOAA",
-								"name": "REPO",
-								"nameWithOwner": "OWNER/REPO",
-								"databaseId": 42
+							"html_url": "https://github.com/OWNER/REPO/pull/1",
+							"base": {
+								"repo": {
+									"node_id": "R_kgDOAA",
+									"name": "REPO",
+									"full_name": "OWNER/REPO",
+									"id": 42
+								}
 							}
-						}}}}`)(req)
+						}`)(req)
 					},
 				)
 			}

@@ -2,6 +2,7 @@ package checks
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"reflect"
 	"testing"
@@ -136,6 +137,7 @@ func Test_checksRun(t *testing.T) {
 		failFast        bool
 		required        bool
 		disableDetector bool
+		pr              *api.PullRequest
 		httpStubs       func(*httpmock.Registry)
 		wantOut         string
 		wantErr         string
@@ -143,12 +145,7 @@ func Test_checksRun(t *testing.T) {
 		{
 			name: "no commits tty",
 			tty:  true,
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.StringResponse(`{"data":{"node":{}}}`),
-				)
-			},
+			pr:   &api.PullRequest{Number: 123},
 			wantOut: "",
 			wantErr: "no commit found on the pull request",
 		},
@@ -156,10 +153,7 @@ func Test_checksRun(t *testing.T) {
 			name: "no checks tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.StringResponse(`{"data":{"node":{"statusCheckRollup":{"nodes":[{"commit":{"oid": "abc"}}]}}}}`),
-				)
+				stubPRChecks(reg, `[]`, `[]`)
 			},
 			wantOut: "",
 			wantErr: "no checks reported on the 'trunk' branch",
@@ -168,10 +162,7 @@ func Test_checksRun(t *testing.T) {
 			name: "some failing tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someFailing.json"),
-				)
+				stubPRChecks(reg, someFailingRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Doc(`
 				Some checks were not successful
@@ -188,10 +179,7 @@ func Test_checksRun(t *testing.T) {
 			name: "some cancelled tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someCancelled.json"),
-				)
+				stubPRChecks(reg, someCancelledRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Doc(`
 				Some checks were cancelled
@@ -208,10 +196,7 @@ func Test_checksRun(t *testing.T) {
 			name: "some pending tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/somePending.json"),
-				)
+				stubPRChecks(reg, somePendingRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Doc(`
 				Some checks are still pending
@@ -229,10 +214,7 @@ func Test_checksRun(t *testing.T) {
 			name: "all passing tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/allPassing.json"),
-				)
+				stubPRChecks(reg, allPassingRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Doc(`
 				All checks were successful
@@ -250,10 +232,7 @@ func Test_checksRun(t *testing.T) {
 			tty:   true,
 			watch: true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/allPassing.json"),
-				)
+				stubPRChecks(reg, allPassingRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Docf(`
 				%[1]s[?1049hAll checks were successful
@@ -279,10 +258,7 @@ func Test_checksRun(t *testing.T) {
 			watch:    true,
 			failFast: true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someFailing.json"),
-				)
+				stubPRChecks(reg, someFailingRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Docf(`
 				%[1]s[?1049h%[1]s[0;0H%[1]s[JRefreshing checks status every 0 seconds. Press Ctrl+C to quit.
@@ -308,10 +284,7 @@ func Test_checksRun(t *testing.T) {
 			name: "with statuses tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withStatuses.json"),
-				)
+				stubPRChecks(reg, twoPassingRunsJSON, `[{"context":"a status","state":"failure","target_url":"sweet link"}]`)
 			},
 			wantOut: heredoc.Doc(`
 				Some checks were not successful
@@ -325,23 +298,15 @@ func Test_checksRun(t *testing.T) {
 			wantErr: "SilentError",
 		},
 		{
-			name: "no commits",
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.StringResponse(`{"data":{"node":{}}}`),
-				)
-			},
+			name:    "no commits",
+			pr:      &api.PullRequest{Number: 123},
 			wantOut: "",
 			wantErr: "no commit found on the pull request",
 		},
 		{
 			name: "no checks",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.StringResponse(`{"data":{"node":{"statusCheckRollup":{"nodes":[{"commit":{"oid": "abc"}}]}}}}`),
-				)
+				stubPRChecks(reg, `[]`, `[]`)
 			},
 			wantOut: "",
 			wantErr: "no checks reported on the 'trunk' branch",
@@ -349,10 +314,7 @@ func Test_checksRun(t *testing.T) {
 		{
 			name: "some failing",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someFailing.json"),
-				)
+				stubPRChecks(reg, someFailingRunsJSON, `[]`)
 			},
 			wantOut: "sad tests\tfail\t1m26s\tsweet link\t\ncool tests\tpass\t1m26s\tsweet link\t\nslow tests\tpending\t1m26s\tsweet link\t\n",
 			wantErr: "SilentError",
@@ -360,10 +322,7 @@ func Test_checksRun(t *testing.T) {
 		{
 			name: "some pending",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/somePending.json"),
-				)
+				stubPRChecks(reg, somePendingRunsJSON, `[]`)
 			},
 			wantOut: "cool tests\tpass\t1m26s\tsweet link\t\nrad tests\tpass\t1m26s\tsweet link\t\nslow tests\tpending\t1m26s\tsweet link\t\nsad tests\tfail\t1m26s\tsweet link\t\n",
 			wantErr: "PendingError",
@@ -371,10 +330,7 @@ func Test_checksRun(t *testing.T) {
 		{
 			name: "all passing",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/allPassing.json"),
-				)
+				stubPRChecks(reg, allPassingRunsJSON, `[]`)
 			},
 			wantOut: "awesome tests\tpass\t1m26s\tsweet link\t\ncool tests\tpass\t1m26s\tsweet link\t\nrad tests\tpass\t1m26s\tsweet link\t\n",
 			wantErr: "",
@@ -382,10 +338,7 @@ func Test_checksRun(t *testing.T) {
 		{
 			name: "with statuses",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withStatuses.json"),
-				)
+				stubPRChecks(reg, twoPassingRunsJSON, `[{"context":"a status","state":"failure","target_url":"sweet link"}]`)
 			},
 			wantOut: "a status\tfail\t0\tsweet link\t\ncool tests\tpass\t1m26s\tsweet link\t\nrad tests\tpass\t1m26s\tsweet link\t\n",
 			wantErr: "SilentError",
@@ -394,10 +347,7 @@ func Test_checksRun(t *testing.T) {
 			name: "some skipped tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someSkipping.json"),
-				)
+				stubPRChecks(reg, someSkippingRunsJSON, `[]`)
 			},
 			wantOut: heredoc.Doc(`
 				All checks were successful
@@ -413,10 +363,7 @@ func Test_checksRun(t *testing.T) {
 		{
 			name: "some skipped",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someSkipping.json"),
-				)
+				stubPRChecks(reg, someSkippingRunsJSON, `[]`)
 			},
 			wantOut: "cool tests\tpass\t1m26s\tsweet link\t\nrad tests\tskipping\t1m26s\tsweet link\t\nskip tests\tskipping\t1m26s\tsweet link\t\n",
 			wantErr: "",
@@ -425,105 +372,54 @@ func Test_checksRun(t *testing.T) {
 			name:     "only required tty",
 			tty:      true,
 			required: true,
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/onlyRequired.json"),
-				)
-			},
-			wantOut: heredoc.Doc(`
-				All checks were successful
-				0 cancelled, 0 failing, 1 successful, 0 skipped, and 0 pending checks
-
-				   NAME        DESCRIPTION  ELAPSED  URL
-				✓  cool tests               1m26s    sweet link
-			`),
-			wantErr: "",
+			wantOut:  "",
+			wantErr:  "not all features are supported: filtering by --required checks is not supported with REST",
 		},
 		{
 			name:     "only required",
 			required: true,
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/onlyRequired.json"),
-				)
-			},
-			wantOut: "cool tests\tpass\t1m26s\tsweet link\t\n",
-			wantErr: "",
-		},
-		{
-			name:     "only required but no required checks tty",
-			tty:      true,
-			required: true,
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someSkipping.json"),
-				)
-			},
-			wantOut: "",
-			wantErr: "no required checks reported on the 'trunk' branch",
-		},
-		{
-			name:     "only required but no required checks",
-			required: true,
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/someSkipping.json"),
-				)
-			},
-			wantOut: "",
-			wantErr: "no required checks reported on the 'trunk' branch",
+			wantOut:  "",
+			wantErr:  "not all features are supported: filtering by --required checks is not supported with REST",
 		},
 		{
 			name: "descriptions tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withDescriptions.json"),
-				)
+				stubPRChecks(reg, `[]`, withDescriptionsStatusesJSON)
 			},
 			wantOut: heredoc.Doc(`
 				All checks were successful
 				0 cancelled, 0 failing, 3 successful, 0 skipped, and 0 pending checks
 
 				   NAME           DESCRIPTION          ELAPSED  URL
-				✓  awesome tests  awesome description  1m26s    sweet link
-				✓  cool tests     cool description     1m26s    sweet link
-				✓  rad tests      rad description      1m26s    sweet link
+				✓  awesome tests  awesome description           sweet link
+				✓  cool tests     cool description              sweet link
+				✓  rad tests      rad description               sweet link
 			`),
 			wantErr: "",
 		},
 		{
 			name: "descriptions",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withDescriptions.json"),
-				)
+				stubPRChecks(reg, `[]`, withDescriptionsStatusesJSON)
 			},
-			wantOut: "awesome tests\tpass\t1m26s\tsweet link\tawesome description\ncool tests\tpass\t1m26s\tsweet link\tcool description\nrad tests\tpass\t1m26s\tsweet link\trad description\n",
+			wantOut: "awesome tests\tpass\t0\tsweet link\tawesome description\ncool tests\tpass\t0\tsweet link\tcool description\nrad tests\tpass\t0\tsweet link\trad description\n",
 			wantErr: "",
 		},
 		{
 			name: "events tty",
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withEvents.json"),
-				)
+				stubPRChecks(reg, withEventsRunsJSON, `[]`)
+				stubWorkflowRuns(reg)
 			},
 			wantOut: heredoc.Doc(`
 				All checks were successful
 				0 cancelled, 0 failing, 2 successful, 0 skipped, and 0 pending checks
 
-				   NAME                             DESCRIPTION       ELAPSED  URL
-				✓  tests/cool tests (pull_request)  cool description  1m26s    sweet link
-				✓  tests/cool tests (push)          cool description  1m26s    sweet link
+				   NAME                             DESCRIPTION  ELAPSED  URL
+				✓  tests/cool tests (pull_request)               1m26s    sweet link
+				✓  tests/cool tests (push)                       1m26s    sweet link
 			`),
 			wantErr: "",
 		},
@@ -532,41 +428,35 @@ func Test_checksRun(t *testing.T) {
 			tty:             true,
 			disableDetector: true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withoutEvents.json"),
-				)
+				stubPRChecks(reg, withEventsRunsJSON, `[]`)
+				stubWorkflowRuns(reg)
 			},
 			wantOut: heredoc.Doc(`
 				All checks were successful
 				0 cancelled, 0 failing, 1 successful, 0 skipped, and 0 pending checks
 
-				   NAME              DESCRIPTION       ELAPSED  URL
-				✓  tests/cool tests  cool description  1m26s    sweet link
+				   NAME              DESCRIPTION  ELAPSED  URL
+				✓  tests/cool tests               1m26s    sweet link
 			`),
 			wantErr: "",
 		},
 		{
 			name: "events",
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withEvents.json"),
-				)
+				stubPRChecks(reg, withEventsRunsJSON, `[]`)
+				stubWorkflowRuns(reg)
 			},
-			wantOut: "cool tests\tpass\t1m26s\tsweet link\tcool description\ncool tests\tpass\t1m26s\tsweet link\tcool description\n",
+			wantOut: "cool tests\tpass\t1m26s\tsweet link\t\ncool tests\tpass\t1m26s\tsweet link\t\n",
 			wantErr: "",
 		},
 		{
 			name:            "events not supported",
 			disableDetector: true,
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query PullRequestStatusChecks\b`),
-					httpmock.FileResponse("./fixtures/withoutEvents.json"),
-				)
+				stubPRChecks(reg, withEventsRunsJSON, `[]`)
+				stubWorkflowRuns(reg)
 			},
-			wantOut: "cool tests\tpass\t1m26s\tsweet link\tcool description\n",
+			wantOut: "cool tests\tpass\t1m26s\tsweet link\t\n",
 			wantErr: "",
 		},
 	}
@@ -589,7 +479,10 @@ func Test_checksRun(t *testing.T) {
 				detector = &fd.DisabledDetectorMock{}
 			}
 
-			response := &api.PullRequest{Number: 123, HeadRefName: "trunk"}
+			response := tt.pr
+			if response == nil {
+				response = &api.PullRequest{Number: 123, HeadRefName: "trunk"}
+			}
 
 			opts := &ChecksOptions{
 				HttpClient: func() (*http.Client, error) {
@@ -607,6 +500,9 @@ func Test_checksRun(t *testing.T) {
 			err := checksRun(opts)
 			if tt.wantErr != "" {
 				assert.EqualError(t, err, tt.wantErr)
+				if tt.required {
+					assert.True(t, errors.Is(err, api.ErrNotSupported))
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -1025,3 +921,67 @@ func TestEliminateDuplicates(t *testing.T) {
 		})
 	}
 }
+
+
+func stubPRChecks(reg *httpmock.Registry, checkRunsJSON, statusesJSON string) {
+	reg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/commits/trunk/check-runs"),
+		httpmock.StringResponse(`{"check_runs":`+checkRunsJSON+`}`),
+	)
+	reg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/commits/trunk/status"),
+		httpmock.StringResponse(`{"statuses":`+statusesJSON+`}`),
+	)
+}
+
+func stubWorkflowRuns(reg *httpmock.Registry) {
+	reg.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
+		httpmock.StringResponse(`{"workflow_runs":[
+			{"id":1,"name":"tests","event":"pull_request","check_suite_id":10},
+			{"id":2,"name":"tests","event":"push","check_suite_id":20}
+		]}`),
+	)
+}
+
+const (
+	allPassingRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"rad tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"awesome tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"}
+	]`
+	twoPassingRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"rad tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"}
+	]`
+	someFailingRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"sad tests","status":"completed","conclusion":"failure","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"slow tests","status":"in_progress","conclusion":"","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"}
+	]`
+	someCancelledRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"sad tests","status":"completed","conclusion":"cancelled","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"awesome tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"}
+	]`
+	somePendingRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"rad tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"slow tests","status":"in_progress","conclusion":"","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"sad tests","status":"completed","conclusion":"cancelled","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"}
+	]`
+	someSkippingRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"rad tests","status":"completed","conclusion":"skipped","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"},
+		{"name":"skip tests","status":"completed","conclusion":"skipped","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link"}
+	]`
+	withDescriptionsStatusesJSON = `[
+		{"context":"cool tests","description":"cool description","state":"success","target_url":"sweet link"},
+		{"context":"rad tests","description":"rad description","state":"success","target_url":"sweet link"},
+		{"context":"awesome tests","description":"awesome description","state":"success","target_url":"sweet link"}
+	]`
+	withEventsRunsJSON = `[
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link","check_suite":{"id":10}},
+		{"name":"cool tests","status":"completed","conclusion":"success","started_at":"2020-08-27T18:58:46Z","completed_at":"2020-08-27T19:00:12Z","details_url":"sweet link","check_suite":{"id":20}}
+	]`
+)

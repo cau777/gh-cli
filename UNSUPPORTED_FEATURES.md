@@ -7,7 +7,8 @@ when running in REST-only mode.
 
 ## Pull Requests & Checks
 
-*Tracked as PR commands are migrated.*
+- **`gh pr checks --required`**: GitHub REST check-runs (`/commits/{ref}/check-runs`) and commit status (`/commits/{ref}/status`) endpoints do not indicate which checks are required by branch protection rulesets. Passing `--required` returns `not all features are supported`.
+- **PR Finder (`pkg/cmd/pr/shared/finder.go`)**: `projectItems`, `projectCards`, `closingIssuesReferences`, `isInMergeQueue`, and `isMergeQueueEnabled` are not available on REST PR endpoints and are left empty on default lookups. Explicit `--json` validation is handled at command entry points.
 
 ## Issues
 

@@ -150,9 +150,13 @@ func checksRun(opts *ChecksOptions) error {
 		return checksRunWebMode(opts)
 	}
 
+	if opts.Required {
+		return api.NotSupportedError("filtering by --required checks is not supported with REST")
+	}
+
 	findOptions := shared.FindOptions{
 		Selector: opts.SelectorArg,
-		Fields:   []string{"number", "headRefName"},
+		Fields:   []string{"number", "headRefName", "headRefOid"},
 	}
 
 	var pr *api.PullRequest
@@ -255,57 +259,28 @@ func checksRun(opts *ChecksOptions) error {
 }
 
 func populateStatusChecks(client *http.Client, repo ghrepo.Interface, pr *api.PullRequest, requiredChecks bool, includeEvent bool) ([]check, checkCounts, error) {
+	if requiredChecks {
+		return nil, checkCounts{}, api.NotSupportedError("filtering by --required checks is not supported with REST")
+	}
+
+	ref := pr.HeadRefOid
+	if ref == "" {
+		ref = pr.HeadRefName
+	}
+	if ref == "" {
+		return nil, checkCounts{}, errors.New("no commit found on the pull request")
+	}
+
 	apiClient := api.NewClientFromHTTP(client)
-
-	type response struct {
-		Node *api.PullRequest
+	contexts, err := api.FetchStatusChecksREST(apiClient, repo, ref, includeEvent)
+	if err != nil {
+		return nil, checkCounts{}, err
 	}
 
-	query := fmt.Sprintf(`
-	query PullRequestStatusChecks($id: ID!, $endCursor: String) {
-		node(id: $id) {
-			...on PullRequest {
-				%s
-			}
-		}
-	}`, api.RequiredStatusCheckRollupGraphQL("$id", "$endCursor", includeEvent))
-
-	variables := map[string]any{
-		"id": pr.ID,
-	}
-
-	statusCheckRollup := api.CheckContexts{}
-
-	for {
-		var resp response
-		err := apiClient.GraphQL(repo.RepoHost(), query, variables, &resp)
-		if err != nil {
-			return nil, checkCounts{}, err
-		}
-
-		if len(resp.Node.StatusCheckRollup.Nodes) == 0 {
-			return nil, checkCounts{}, errors.New("no commit found on the pull request")
-		}
-
-		result := resp.Node.StatusCheckRollup.Nodes[0].Commit.StatusCheckRollup.Contexts
-		statusCheckRollup.Nodes = append(
-			statusCheckRollup.Nodes,
-			result.Nodes...,
-		)
-
-		if !result.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = result.PageInfo.EndCursor
-	}
-
-	if len(statusCheckRollup.Nodes) == 0 {
+	if len(contexts) == 0 {
 		return nil, checkCounts{}, fmt.Errorf("no checks reported on the '%s' branch", pr.HeadRefName)
 	}
 
-	checks, counts := aggregateChecks(statusCheckRollup.Nodes, requiredChecks)
-	if len(checks) == 0 && requiredChecks {
-		return checks, counts, fmt.Errorf("no required checks reported on the '%s' branch", pr.HeadRefName)
-	}
+	checks, counts := aggregateChecks(contexts, requiredChecks)
 	return checks, counts, nil
 }

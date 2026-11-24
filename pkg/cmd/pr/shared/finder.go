@@ -7,23 +7,20 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cli/cli/v2/api"
 	ghContext "github.com/cli/cli/v2/context"
 	"github.com/cli/cli/v2/git"
 	fd "github.com/cli/cli/v2/internal/featuredetection"
-	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	o "github.com/cli/cli/v2/pkg/option"
 	"github.com/cli/cli/v2/pkg/set"
-	"github.com/shurcooL/githubv4"
-	"golang.org/x/sync/errgroup"
 )
 
 type PRFinder interface {
@@ -207,43 +204,16 @@ func (f *finder) Find(opts FindOptions) (*api.PullRequest, ghrepo.Interface, err
 
 	fields := set.NewStringSet()
 	fields.AddValues(opts.Fields)
-	fields.AddValues([]string{"id", "number"}) // for additional preload queries below
+	fields.AddValues([]string{"id", "number"})
 
-	if fields.Contains("isInMergeQueue") || fields.Contains("isMergeQueueEnabled") {
-		if opts.Detector == nil {
-			cachedClient := api.NewCachedHTTPClient(httpClient, time.Hour*24)
-			opts.Detector = fd.NewDetector(cachedClient, f.baseRefRepo.RepoHost())
-		}
-		prFeatures, err := opts.Detector.PullRequestFeatures()
-		if err != nil {
-			return nil, nil, err
-		}
-		// TODO mergeQueueCleanup
-		if !prFeatures.MergeQueue {
-			fields.Remove("isInMergeQueue")
-			fields.Remove("isMergeQueueEnabled")
-		}
-	}
-
-	var getProjectItems bool
-	if fields.Contains("projectItems") {
-		getProjectItems = true
-		fields.Remove("projectItems")
-	}
-
-	// TODO projectsV1Deprecation
-	// Remove this block
-	// When removing this, remember to remove `projectCards` from the list of default fields in pr/view.go
-	if fields.Contains("projectCards") {
-		if opts.Detector == nil {
-			cachedClient := api.NewCachedHTTPClient(httpClient, time.Hour*24)
-			opts.Detector = fd.NewDetector(cachedClient, f.baseRefRepo.RepoHost())
-		}
-
-		if opts.Detector.ProjectsV1() == gh.ProjectsV1Unsupported {
-			fields.Remove("projectCards")
-		}
-	}
+	// Projects V1/V2, closingIssuesReferences, mergeQueue, and reviewDecision are not
+	// available via REST; leave them empty during Finder lookups and validate explicit
+	// --json requests at the command layer.
+	fields.Remove("projectItems")
+	fields.Remove("projectCards")
+	fields.Remove("closingIssuesReferences")
+	fields.Remove("isInMergeQueue")
+	fields.Remove("isMergeQueueEnabled")
 
 	var pr *api.PullRequest
 	if f.prNumber > 0 {
@@ -263,39 +233,7 @@ func (f *finder) Find(opts FindOptions) (*api.PullRequest, ghrepo.Interface, err
 		return nil, f.baseRefRepo, &NotFoundError{fmt.Errorf("no pull requests found")}
 	}
 
-	g, _ := errgroup.WithContext(context.Background())
-	if fields.Contains("reviews") {
-		g.Go(func() error {
-			return preloadPrReviews(httpClient, f.baseRefRepo, pr)
-		})
-	}
-	if fields.Contains("comments") {
-		g.Go(func() error {
-			return preloadPrComments(httpClient, f.baseRefRepo, pr)
-		})
-	}
-	if fields.Contains("closingIssuesReferences") {
-		g.Go(func() error {
-			return preloadPrClosingIssuesReferences(httpClient, f.baseRefRepo, pr)
-		})
-	}
-	if fields.Contains("statusCheckRollup") {
-		g.Go(func() error {
-			return preloadPrChecks(httpClient, f.baseRefRepo, pr)
-		})
-	}
-	if getProjectItems {
-		g.Go(func() error {
-			apiClient := api.NewClientFromHTTP(httpClient)
-			err := api.ProjectsV2ItemsForPullRequest(apiClient, f.baseRefRepo, pr)
-			if err != nil && !api.ProjectsV2IgnorableError(err) {
-				return err
-			}
-			return nil
-		})
-	}
-
-	return pr, f.baseRefRepo, g.Wait()
+	return pr, f.baseRefRepo, nil
 }
 
 var pullURLRE = regexp.MustCompile(`^/([^/]+)/([^/]+)/pull/(\d+)(.*$)`)
@@ -354,263 +292,68 @@ func ParseFullReference(s string) (ghrepo.Interface, int, error) {
 }
 
 func findByNumber(httpClient *http.Client, repo ghrepo.Interface, number int, fields []string) (*api.PullRequest, error) {
-	type response struct {
-		Repository struct {
-			PullRequest api.PullRequest
-		}
-	}
-
-	query := fmt.Sprintf(`
-	query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {
-		repository(owner: $owner, name: $repo) {
-			pullRequest(number: $pr_number) {%s}
-		}
-	}`, api.PullRequestGraphQL(fields))
-
-	variables := map[string]any{
-		"owner":     repo.RepoOwner(),
-		"repo":      repo.RepoName(),
-		"pr_number": number,
-	}
-
-	var resp response
 	client := api.NewClientFromHTTP(httpClient)
-	err := client.GraphQL(repo.RepoHost(), query, variables, &resp)
-	if err != nil {
-		return nil, err
-	}
+	return api.LookupPullRequestByNumberREST(client, repo, number, fields)
+}
 
-	return &resp.Repository.PullRequest, nil
+var singlePRDetailFields = []string{
+	"additions",
+	"autoMergeRequest",
+	"changedFiles",
+	"comments",
+	"commitsCount",
+	"deletions",
+	"maintainerCanModify",
+	"mergeStateStatus",
+	"mergeable",
+}
+
+func needsSinglePRDetailFetch(fields []string) bool {
+	for _, f := range fields {
+		if slices.Contains(singlePRDetailFields, f) {
+			return true
+		}
+	}
+	return false
 }
 
 func findForRefs(httpClient *http.Client, prRefs PRFindRefs, stateFilters, fields []string) (*api.PullRequest, error) {
-	type response struct {
-		Repository struct {
-			PullRequests struct {
-				Nodes []api.PullRequest
-			}
-			DefaultBranchRef struct {
-				Name string
-			}
-		}
+	headQuery := prRefs.QualifiedHeadRef()
+	if !strings.Contains(headQuery, ":") {
+		headQuery = fmt.Sprintf("%s:%s", prRefs.BaseRepo().RepoOwner(), prRefs.UnqualifiedHeadRef())
 	}
 
-	fieldSet := set.NewStringSet()
-	fieldSet.AddValues(fields)
-	// these fields are required for filtering below
-	fieldSet.AddValues([]string{"state", "baseRefName", "headRefName", "isCrossRepository", "headRepositoryOwner"})
-
-	query := fmt.Sprintf(`
-	query PullRequestForBranch($owner: String!, $repo: String!, $headRefName: String!, $states: [PullRequestState!]) {
-		repository(owner: $owner, name: $repo) {
-			pullRequests(headRefName: $headRefName, states: $states, first: 30, orderBy: { field: CREATED_AT, direction: DESC }) {
-				nodes {%s}
-			}
-			defaultBranchRef { name }
-		}
-	}`, api.PullRequestGraphQL(fieldSet.ToSlice()))
-
-	variables := map[string]any{
-		"owner":       prRefs.BaseRepo().RepoOwner(),
-		"repo":        prRefs.BaseRepo().RepoName(),
-		"headRefName": prRefs.UnqualifiedHeadRef(),
-		"states":      stateFilters,
-	}
-
-	var resp response
 	client := api.NewClientFromHTTP(httpClient)
-	err := client.GraphQL(prRefs.BaseRepo().RepoHost(), query, variables, &resp)
+	prs, defaultBranch, err := api.FetchPullRequestsForBranchREST(client, prRefs.BaseRepo(), headQuery, stateFilters)
 	if err != nil {
 		return nil, err
 	}
 
-	prs := resp.Repository.PullRequests.Nodes
 	sort.SliceStable(prs, func(a, b int) bool {
 		return prs[a].State == "OPEN" && prs[b].State != "OPEN"
 	})
 
-	for _, pr := range prs {
+	for i := range prs {
+		pr := &prs[i]
 		// When the head is the default branch, it doesn't really make sense to show merged or closed PRs.
 		// https://github.com/cli/cli/issues/4263
-		isNotClosedOrMergedWhenHeadIsDefault := pr.State == "OPEN" || resp.Repository.DefaultBranchRef.Name != prRefs.QualifiedHeadRef()
+		isNotClosedOrMergedWhenHeadIsDefault := pr.State == "OPEN" || defaultBranch != prRefs.QualifiedHeadRef()
 		if prRefs.Matches(pr.BaseRefName, pr.HeadLabel()) && isNotClosedOrMergedWhenHeadIsDefault {
-			return &pr, nil
+			if needsSinglePRDetailFetch(fields) {
+				fullPR, err := api.FetchPullRequestREST(client, prRefs.BaseRepo(), pr.Number)
+				if err != nil {
+					return nil, err
+				}
+				pr = fullPR
+			}
+			if err := api.HydratePullRequestFields(client, prRefs.BaseRepo(), pr, fields); err != nil {
+				return nil, err
+			}
+			return pr, nil
 		}
 	}
 
 	return nil, &NotFoundError{fmt.Errorf("no pull requests found for branch %q", prRefs.QualifiedHeadRef())}
-}
-
-func preloadPrReviews(httpClient *http.Client, repo ghrepo.Interface, pr *api.PullRequest) error {
-	if !pr.Reviews.PageInfo.HasNextPage {
-		return nil
-	}
-
-	type response struct {
-		Node struct {
-			PullRequest struct {
-				Reviews api.PullRequestReviews `graphql:"reviews(first: 100, after: $endCursor)"`
-			} `graphql:"...on PullRequest"`
-		} `graphql:"node(id: $id)"`
-	}
-
-	variables := map[string]any{
-		"id":        githubv4.ID(pr.ID),
-		"endCursor": githubv4.String(pr.Reviews.PageInfo.EndCursor),
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-
-	for {
-		var query response
-		err := gql.Query(repo.RepoHost(), "ReviewsForPullRequest", &query, variables)
-		if err != nil {
-			return err
-		}
-
-		pr.Reviews.Nodes = append(pr.Reviews.Nodes, query.Node.PullRequest.Reviews.Nodes...)
-		pr.Reviews.TotalCount = len(pr.Reviews.Nodes)
-
-		if !query.Node.PullRequest.Reviews.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Node.PullRequest.Reviews.PageInfo.EndCursor)
-	}
-
-	pr.Reviews.PageInfo.HasNextPage = false
-	return nil
-}
-
-func preloadPrComments(client *http.Client, repo ghrepo.Interface, pr *api.PullRequest) error {
-	if !pr.Comments.PageInfo.HasNextPage {
-		return nil
-	}
-
-	type response struct {
-		Node struct {
-			PullRequest struct {
-				Comments api.Comments `graphql:"comments(first: 100, after: $endCursor)"`
-			} `graphql:"...on PullRequest"`
-		} `graphql:"node(id: $id)"`
-	}
-
-	variables := map[string]any{
-		"id":        githubv4.ID(pr.ID),
-		"endCursor": githubv4.String(pr.Comments.PageInfo.EndCursor),
-	}
-
-	gql := api.NewClientFromHTTP(client)
-
-	for {
-		var query response
-		err := gql.Query(repo.RepoHost(), "CommentsForPullRequest", &query, variables)
-		if err != nil {
-			return err
-		}
-
-		pr.Comments.Nodes = append(pr.Comments.Nodes, query.Node.PullRequest.Comments.Nodes...)
-		pr.Comments.TotalCount = len(pr.Comments.Nodes)
-
-		if !query.Node.PullRequest.Comments.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Node.PullRequest.Comments.PageInfo.EndCursor)
-	}
-
-	pr.Comments.PageInfo.HasNextPage = false
-	return nil
-}
-
-func preloadPrClosingIssuesReferences(client *http.Client, repo ghrepo.Interface, pr *api.PullRequest) error {
-	if !pr.ClosingIssuesReferences.PageInfo.HasNextPage {
-		return nil
-	}
-
-	type response struct {
-		Node struct {
-			PullRequest struct {
-				ClosingIssuesReferences api.ClosingIssuesReferences `graphql:"closingIssuesReferences(first: 100, after: $endCursor)"`
-			} `graphql:"...on PullRequest"`
-		} `graphql:"node(id: $id)"`
-	}
-
-	variables := map[string]any{
-		"id":        githubv4.ID(pr.ID),
-		"endCursor": githubv4.String(pr.ClosingIssuesReferences.PageInfo.EndCursor),
-	}
-
-	gql := api.NewClientFromHTTP(client)
-
-	for {
-		var query response
-		err := gql.Query(repo.RepoHost(), "closingIssuesReferences", &query, variables)
-		if err != nil {
-			return err
-		}
-
-		pr.ClosingIssuesReferences.Nodes = append(pr.ClosingIssuesReferences.Nodes, query.Node.PullRequest.ClosingIssuesReferences.Nodes...)
-
-		if !query.Node.PullRequest.ClosingIssuesReferences.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Node.PullRequest.ClosingIssuesReferences.PageInfo.EndCursor)
-	}
-
-	pr.ClosingIssuesReferences.PageInfo.HasNextPage = false
-	return nil
-}
-
-func preloadPrChecks(client *http.Client, repo ghrepo.Interface, pr *api.PullRequest) error {
-	if len(pr.StatusCheckRollup.Nodes) == 0 {
-		return nil
-	}
-	statusCheckRollup := &pr.StatusCheckRollup.Nodes[0].Commit.StatusCheckRollup.Contexts
-	if !statusCheckRollup.PageInfo.HasNextPage {
-		return nil
-	}
-
-	endCursor := statusCheckRollup.PageInfo.EndCursor
-
-	type response struct {
-		Node *api.PullRequest
-	}
-
-	query := fmt.Sprintf(`
-	query PullRequestStatusChecks($id: ID!, $endCursor: String!) {
-		node(id: $id) {
-			...on PullRequest {
-				%s
-			}
-		}
-	}`, api.StatusCheckRollupGraphQLWithoutCountByState("$endCursor"))
-
-	variables := map[string]any{
-		"id": pr.ID,
-	}
-
-	apiClient := api.NewClientFromHTTP(client)
-	for {
-		variables["endCursor"] = endCursor
-		var resp response
-		err := apiClient.GraphQL(repo.RepoHost(), query, variables, &resp)
-		if err != nil {
-			return err
-		}
-
-		result := resp.Node.StatusCheckRollup.Nodes[0].Commit.StatusCheckRollup.Contexts
-		statusCheckRollup.Nodes = append(
-			statusCheckRollup.Nodes,
-			result.Nodes...,
-		)
-
-		if !result.PageInfo.HasNextPage {
-			break
-		}
-		endCursor = result.PageInfo.EndCursor
-	}
-
-	statusCheckRollup.PageInfo.HasNextPage = false
-	return nil
 }
 
 type NotFoundError struct {

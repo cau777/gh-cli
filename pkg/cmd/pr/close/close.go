@@ -103,7 +103,7 @@ func closeRun(opts *CloseOptions) error {
 		}
 	}
 
-	err = api.PullRequestClose(httpClient, baseRepo, pr.ID)
+	err = api.PullRequestClose(httpClient, baseRepo, pr.Number)
 	if err != nil {
 		return fmt.Errorf("API call failed: %w", err)
 	}

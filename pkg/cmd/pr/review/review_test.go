@@ -235,18 +235,16 @@ func TestPRReview(t *testing.T) {
 			http := &httpmock.Registry{}
 			defer http.Verify(t)
 
-			shared.StubFinderForRunCommandStyleTests(t, "", &api.PullRequest{ID: "THE-ID"}, ghrepo.New("OWNER", "REPO"))
+			shared.StubFinderForRunCommandStyleTests(t, "", &api.PullRequest{ID: "THE-ID", Number: 123}, ghrepo.New("OWNER", "REPO"))
 
 			http.Register(
-				httpmock.GraphQL(`mutation PullRequestReviewAdd\b`),
-				httpmock.GraphQLMutation(`{"data": {} }`,
-					func(inputs map[string]any) {
-						assert.Equal(t, map[string]any{
-							"pullRequestId": "THE-ID",
-							"event":         tt.wantEvent,
-							"body":          tt.wantBody,
-						}, inputs)
-					}),
+				httpmock.REST("POST", "repos/OWNER/REPO/pulls/123/reviews"),
+				httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+					assert.Equal(t, map[string]any{
+						"event": tt.wantEvent,
+						"body":  tt.wantBody,
+					}, inputs)
+				}),
 			)
 
 			output, err := runCommand(http, nil, false, tt.args)
@@ -264,12 +262,11 @@ func TestPRReview_interactive(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "", &api.PullRequest{ID: "THE-ID", Number: 123}, ghrepo.New("OWNER", "REPO"))
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestReviewAdd\b`),
-		httpmock.GraphQLMutation(`{"data": {} }`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["event"], "APPROVE")
-				assert.Equal(t, inputs["body"], "cool story")
-			}),
+		httpmock.REST("POST", "repos/OWNER/REPO/pulls/123/reviews"),
+		httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+			assert.Equal(t, "APPROVE", inputs["event"])
+			assert.Equal(t, "cool story", inputs["body"])
+		}),
 	)
 
 	pm := &prompter.PrompterMock{
@@ -311,12 +308,11 @@ func TestPRReview_interactive_blank_approve(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "", &api.PullRequest{ID: "THE-ID", Number: 123}, ghrepo.New("OWNER", "REPO"))
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestReviewAdd\b`),
-		httpmock.GraphQLMutation(`{"data": {} }`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["event"], "APPROVE")
-				assert.Equal(t, inputs["body"], "")
-			}),
+		httpmock.REST("POST", "repos/OWNER/REPO/pulls/123/reviews"),
+		httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+			assert.Equal(t, "APPROVE", inputs["event"])
+			assert.Equal(t, "", inputs["body"])
+		}),
 	)
 
 	pm := &prompter.PrompterMock{

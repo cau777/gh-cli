@@ -275,7 +275,7 @@ func TestCommentableRunUploadsAndWritesBodies(t *testing.T) {
 			},
 			wantQuery:      `mutation CommentCreate\b`,
 			writeFails:     true,
-			wantErr:        "could not upload ./b.png: attaching files requires write access to the repository\nGraphQL: the write failed",
+			wantErr:        "could not upload ./b.png: attaching files requires write access to the repository\nHTTP 422 (https://api.github.com/repos/OWNER/REPO/issues/123/comments)",
 			wantUploads:    2,
 			wantOperations: &attachments.UploadResult{AppendOperations: 1},
 		},
@@ -433,24 +433,30 @@ func TestCommentableRunUploadsAndWritesBodies(t *testing.T) {
 			}
 
 			var gotBody string
-			if tt.wantQuery != "" && tt.writeFails {
-				reg.Register(
-					httpmock.GraphQL(tt.wantQuery),
-					httpmock.StringResponse(`{"errors":[{"message":"the write failed"}]}`),
-				)
-			} else if tt.wantQuery != "" {
-				response := `{"data":{"addComment":{"commentEdge":{"node":{
-					"url":"https://github.com/OWNER/REPO/pull/123#issuecomment-456"}}}}}`
+			if tt.wantQuery != "" {
+				method := "POST"
+				path := "repos/OWNER/REPO/issues/123/comments"
+				response := `{"html_url":"https://github.com/OWNER/REPO/pull/123#issuecomment-456"}`
+				status := http.StatusCreated
 				if tt.wantQuery == `mutation CommentUpdate\b` {
-					response = `{"data":{"updateIssueComment":{"issueComment":{
-						"url":"https://github.com/OWNER/REPO/pull/123#issuecomment-111"}}}}`
+					method = "PATCH"
+					path = "repos/OWNER/REPO/issues/comments/111"
+					response = `{"html_url":"https://github.com/OWNER/REPO/pull/123#issuecomment-111"}`
+					status = http.StatusOK
 				}
-				reg.Register(
-					httpmock.GraphQL(tt.wantQuery),
-					httpmock.GraphQLMutation(response, func(inputs map[string]any) {
-						gotBody, _ = inputs["body"].(string)
-					}),
-				)
+				if tt.writeFails {
+					reg.Register(
+						httpmock.REST(method, path),
+						httpmock.StatusStringResponse(422, `{"message":"the write failed"}`),
+					)
+				} else {
+					reg.Register(
+						httpmock.REST(method, path),
+						httpmock.RESTPayload(status, response, func(payload map[string]any) {
+							gotBody, _ = payload["body"].(string)
+						}),
+					)
+				}
 			}
 
 			opts := tt.opts

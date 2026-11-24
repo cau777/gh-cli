@@ -495,30 +495,6 @@ func TestWithPrAndIssueQueryParamsProjectsV1Deprecation(t *testing.T) {
 			httpmock.StringResponse(`[
 				{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
 			]`))
-		reg.Register(
-			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		reg.Register(
-			httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		reg.Register(
-			httpmock.GraphQL(`query UserProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
 
 		u, err := WithPrAndIssueQueryParams(
 			client,
@@ -558,34 +534,7 @@ func TestWithPrAndIssueQueryParamsProjectsV1Deprecation(t *testing.T) {
 			httpmock.REST("GET", "orgs/OWNER/projects"),
 		)
 
-		reg.Register(
-			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		reg.Register(
-			httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [
-				{ "title": "TriageV2", "id": "TRIAGEV2ID", "resourcePath": "/orgs/ORG/projects/2"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		reg.Register(
-			httpmock.GraphQL(`query UserProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-
-		u, err := WithPrAndIssueQueryParams(
+		_, err := WithPrAndIssueQueryParams(
 			client,
 			repo,
 			"http://example.com/hey",
@@ -594,15 +543,6 @@ func TestWithPrAndIssueQueryParamsProjectsV1Deprecation(t *testing.T) {
 			},
 			gh.ProjectsV1Unsupported,
 		)
-		require.NoError(t, err)
-
-		url, err := url.Parse(u)
-		require.NoError(t, err)
-
-		require.Equal(
-			t,
-			url.Query().Get("projects"),
-			"ORG/2",
-		)
+		require.EqualError(t, err, "could not add to project: 'TriageV2' not found")
 	})
 }

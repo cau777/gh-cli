@@ -117,7 +117,7 @@ func reopenRun(opts *ReopenOptions) error {
 
 func apiReopen(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue) error {
 	if issue.IsPullRequest() {
-		return api.PullRequestReopen(httpClient, repo, issue.ID)
+		return api.PullRequestReopen(httpClient, repo, issue.Number)
 	}
 
 	var mutation struct {

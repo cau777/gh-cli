@@ -2,28 +2,34 @@ package shared
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
+	"regexp"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/git"
 	fd "github.com/cli/cli/v2/internal/featuredetection"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/githubtemplate"
-	"github.com/shurcooL/githubv4"
+	"gopkg.in/yaml.v3"
 )
 
 type issueTemplate struct {
-	Gname  string `graphql:"name"`
-	Gbody  string `graphql:"body"`
-	Gtitle string `graphql:"title"`
+	Gname  string
+	Gbody  string
+	Gtitle string
 }
 
 type pullRequestTemplate struct {
-	Gname string `graphql:"filename"`
-	Gbody string `graphql:"body"`
+	Gname string
+	Gbody string
 }
 
 func (t *issueTemplate) Name() string {
@@ -58,57 +64,167 @@ func (t *pullRequestTemplate) Title() string {
 	return ""
 }
 
-func listIssueTemplates(httpClient *http.Client, repo ghrepo.Interface) ([]Template, error) {
-	var query struct {
-		Repository struct {
-			IssueTemplates []issueTemplate
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
+type restTemplateEntry struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Type     string `json:"type"`
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
+}
 
-	variables := map[string]any{
-		"owner": githubv4.String(repo.RepoOwner()),
-		"name":  githubv4.String(repo.RepoName()),
-	}
+var templateFrontmatterRE = regexp.MustCompile(`(?m)^---\r?\n(\s*\r?\n)?`)
 
-	gql := api.NewClientFromHTTP(httpClient)
+func isHTTPNotFoundError(err error) bool {
+	var httpErr api.HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
+}
 
-	err := gql.Query(repo.RepoHost(), "IssueTemplates", &query, variables)
+func fetchRESTContentFile(client *api.Client, repo ghrepo.Interface, filePath string) ([]byte, error) {
+	parts := append([]string{"repos", repo.RepoOwner(), repo.RepoName(), "contents"}, strings.Split(filePath, "/")...)
+	u, err := safeurl.JoinPath(parts...)
 	if err != nil {
 		return nil, err
 	}
 
-	ts := query.Repository.IssueTemplates
-	templates := make([]Template, len(ts))
-	for i := range templates {
-		templates[i] = &ts[i]
+	var file restTemplateEntry
+	if err := client.REST(repo.RepoHost(), http.MethodGet, u.String(), nil, &file); err != nil {
+		return nil, err
+	}
+
+	if file.Encoding == "" || file.Encoding != "base64" {
+		return []byte(file.Content), nil
+	}
+	return base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
+}
+
+func listRESTTemplateEntries(client *api.Client, repo ghrepo.Interface, dirName string) ([]restTemplateEntry, error) {
+	candidates := [][]string{
+		{".github", dirName},
+		{dirName},
+		{"docs", dirName},
+	}
+
+	for _, parts := range candidates {
+		urlParts := append([]string{"repos", repo.RepoOwner(), repo.RepoName(), "contents"}, parts...)
+		u, err := safeurl.JoinPath(urlParts...)
+		if err != nil {
+			return nil, err
+		}
+
+		var entries []restTemplateEntry
+		err = client.REST(repo.RepoHost(), http.MethodGet, u.String(), nil, &entries)
+		if err != nil {
+			if isHTTPNotFoundError(err) {
+				continue
+			}
+			return nil, err
+		}
+		return entries, nil
+	}
+
+	return nil, nil
+}
+
+func listIssueTemplates(httpClient *http.Client, repo ghrepo.Interface) ([]Template, error) {
+	client := api.NewClientFromHTTP(httpClient)
+	entries, err := listRESTTemplateEntries(client, repo, "ISSUE_TEMPLATE")
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+
+	var templates []Template
+	for _, entry := range entries {
+		if entry.Type != "" && entry.Type != "file" {
+			continue
+		}
+		ext := strings.ToLower(path.Ext(entry.Name))
+		if ext != ".md" && ext != ".yml" && ext != ".yaml" {
+			continue
+		}
+		if ext != ".md" && strings.EqualFold(entry.Name, "config.yml") || strings.EqualFold(entry.Name, "config.yaml") {
+			continue
+		}
+
+		raw, err := fetchRESTContentFile(client, repo, entry.Path)
+		if err != nil {
+			return nil, err
+		}
+
+		tpl := parseRESTIssueTemplate(entry.Name, raw)
+		templates = append(templates, &tpl)
 	}
 
 	return templates, nil
 }
 
+func parseRESTIssueTemplate(filename string, raw []byte) issueTemplate {
+	tpl := issueTemplate{Gname: filename}
+	ext := strings.ToLower(path.Ext(filename))
+	if ext == ".yml" || ext == ".yaml" {
+		var meta struct {
+			Name  string
+			Title string
+		}
+		if err := yaml.Unmarshal(raw, &meta); err == nil {
+			if meta.Name != "" {
+				tpl.Gname = meta.Name
+			}
+			tpl.Gtitle = meta.Title
+		}
+		return tpl
+	}
+
+	if matches := templateFrontmatterRE.FindAllIndex(raw, 2); len(matches) > 1 && matches[0][0] == 0 {
+		var meta struct {
+			Name  string
+			Title string
+		}
+		if err := yaml.Unmarshal(raw[0:matches[1][1]], &meta); err == nil {
+			if meta.Name != "" {
+				tpl.Gname = meta.Name
+			}
+			tpl.Gtitle = meta.Title
+		}
+		tpl.Gbody = string(raw[matches[1][1]:])
+	} else {
+		tpl.Gbody = string(raw)
+	}
+	return tpl
+}
+
 func listPullRequestTemplates(httpClient *http.Client, repo ghrepo.Interface) ([]Template, error) {
-	var query struct {
-		Repository struct {
-			PullRequestTemplates []pullRequestTemplate
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	variables := map[string]any{
-		"owner": githubv4.String(repo.RepoOwner()),
-		"name":  githubv4.String(repo.RepoName()),
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-
-	err := gql.Query(repo.RepoHost(), "PullRequestTemplates", &query, variables)
+	client := api.NewClientFromHTTP(httpClient)
+	entries, err := listRESTTemplateEntries(client, repo, "PULL_REQUEST_TEMPLATE")
 	if err != nil {
 		return nil, err
 	}
 
-	ts := query.Repository.PullRequestTemplates
-	templates := make([]Template, len(ts))
-	for i := range templates {
-		templates[i] = &ts[i]
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+
+	var templates []Template
+	for _, entry := range entries {
+		if entry.Type != "" && entry.Type != "file" {
+			continue
+		}
+		if !strings.EqualFold(path.Ext(entry.Name), ".md") {
+			continue
+		}
+
+		raw, err := fetchRESTContentFile(client, repo, entry.Path)
+		if err != nil {
+			return nil, err
+		}
+
+		templates = append(templates, &pullRequestTemplate{
+			Gname: entry.Name,
+			Gbody: string(raw),
+		})
 	}
 
 	return templates, nil

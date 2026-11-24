@@ -1,15 +1,12 @@
 package revert
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/cli/cli/v2/api"
-	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -83,50 +80,5 @@ func NewCmdRevert(f *cmdutil.Factory, runF func(*RevertOptions) error) *cobra.Co
 }
 
 func revertRun(opts *RevertOptions) error {
-	cs := opts.IO.ColorScheme()
-
-	findOptions := shared.FindOptions{
-		Selector: opts.SelectorArg,
-		Fields:   []string{"id", "number", "state", "title"},
-	}
-	pr, baseRepo, err := opts.Finder.Find(findOptions)
-	if err != nil {
-		return err
-	}
-	if pr.State != "MERGED" {
-		fmt.Fprintf(opts.IO.ErrOut, "%s Pull request %s#%d (%s) can't be reverted because it has not been merged\n", cs.FailureIcon(), ghrepo.FullName(baseRepo), pr.Number, pr.Title)
-		return cmdutil.SilentError
-	}
-
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return err
-	}
-	apiClient := api.NewClientFromHTTP(httpClient)
-
-	params := githubv4.RevertPullRequestInput{
-		PullRequestID: pr.ID,
-		Draft:         new(githubv4.Boolean(opts.IsDraft)),
-	}
-	// Only set the Body field when opts.BodySet is true to avoid overriding
-	// GitHub's default revert body generation.
-	if opts.BodySet {
-		params.Body = new(githubv4.String(opts.Body))
-	}
-	// Only set the Title field when opts.Title is not empty to avoid overriding
-	// GitHub's default revert title generation.
-	if opts.Title != "" {
-		params.Title = new(githubv4.String(opts.Title))
-	}
-
-	revertPR, err := api.PullRequestRevert(apiClient, baseRepo, params)
-	if err != nil {
-		fmt.Fprintf(opts.IO.ErrOut, "%s %s\n", cs.FailureIcon(), err)
-		return fmt.Errorf("API call failed: %w", err)
-	}
-
-	if revertPR != nil {
-		fmt.Fprintln(opts.IO.Out, revertPR.URL)
-	}
-	return nil
+	return api.NotSupportedError("reverting a pull request is not supported with REST")
 }

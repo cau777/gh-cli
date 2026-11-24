@@ -61,11 +61,10 @@ func TestPRReopen(t *testing.T) {
 	}, ghrepo.New("OWNER", "REPO"))
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestReopen\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/123"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "open"}, payload)
+		}),
 	)
 
 	output, err := runCommand(http, true, "123")
@@ -120,22 +119,17 @@ func TestPRReopen_withComment(t *testing.T) {
 	}, ghrepo.New("OWNER", "REPO"))
 
 	http.Register(
-		httpmock.GraphQL(`mutation CommentCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "addComment": { "commentEdge": { "node": {
-			"url": "https://github.com/OWNER/REPO/issues/123#issuecomment-456"
-		} } } } }`,
-			func(inputs map[string]any) {
-				assert.Equal(t, "THE-ID", inputs["subjectId"])
-				assert.Equal(t, "reopening comment", inputs["body"])
+		httpmock.REST("POST", "repos/OWNER/REPO/issues/123/comments"),
+		httpmock.RESTPayload(201, `{"html_url": "https://github.com/OWNER/REPO/issues/123#issuecomment-456"}`,
+			func(payload map[string]any) {
+				assert.Equal(t, map[string]any{"body": "reopening comment"}, payload)
 			}),
 	)
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestReopen\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/123"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "open"}, payload)
+		}),
 	)
 
 	output, err := runCommand(http, true, "123 --comment 'reopening comment'")

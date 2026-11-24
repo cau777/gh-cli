@@ -451,17 +451,13 @@ func Test_createRun(t *testing.T) {
 			name: "nontty",
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
-							assert.Equal(t, "REPOID", input["repositoryId"])
 							assert.Equal(t, "my title", input["title"])
 							assert.Equal(t, "my body", input["body"])
-							assert.Equal(t, "master", input["baseRefName"])
-							assert.Equal(t, "feature", input["headRefName"])
+							assert.Equal(t, "master", input["base"])
+							assert.Equal(t, "feature", input["head"])
 						}))
 			},
 			setup: func(opts *CreateOptions, t *testing.T) func() {
@@ -478,11 +474,8 @@ func Test_createRun(t *testing.T) {
 			name: "agent gets event listen hint",
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {}))
 			},
 			setup: func(opts *CreateOptions, t *testing.T) func() {
@@ -630,16 +623,12 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } } }`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
 						assert.Equal(t, "my title", input["title"].(string))
 						assert.Equal(t, "my body", input["body"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "feature", input["headRefName"].(string))
+						assert.Equal(t, "master", input["base"].(string))
+						assert.Equal(t, "feature", input["head"].(string))
 						assert.Equal(t, false, input["draft"].(bool))
 					}))
 			},
@@ -677,16 +666,12 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } } }`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
 						assert.Equal(t, "my title", input["title"].(string))
 						assert.Equal(t, "my body", input["body"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "feature", input["headRefName"].(string))
+						assert.Equal(t, "master", input["base"].(string))
+						assert.Equal(t, "feature", input["head"].(string))
 						assert.Equal(t, false, input["draft"].(bool))
 					}))
 			},
@@ -723,36 +708,6 @@ func Test_createRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login": "OWNER"}`))
-				mockRetrieveProjects(t, reg)
-				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"id": "PullRequest#1",
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } } }
-							`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
-						assert.Equal(t, "my title", input["title"].(string))
-						assert.Equal(t, "my body", input["body"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "feature", input["headRefName"].(string))
-						assert.Equal(t, false, input["draft"].(bool))
-					}))
-				reg.Register(
-					httpmock.GraphQL(`mutation UpdateProjectV2Items\b`),
-					httpmock.GraphQLQuery(`
-							{ "data": { "add_000": { "item": {
-								"id": "1"
-							} } } }
-							`, func(mutations string, inputs map[string]any) {
-						variables, err := json.Marshal(inputs)
-						assert.NoError(t, err)
-						expectedMutations := "mutation UpdateProjectV2Items($input_000: AddProjectV2ItemByIdInput!) {add_000: addProjectV2ItemById(input: $input_000) { item { id } }}"
-						expectedVariables := `{"input_000":{"contentId":"PullRequest#1","projectId":"ROADMAPV2ID"}}`
-						assert.Equal(t, expectedMutations, mutations)
-						assert.Equal(t, expectedVariables, string(variables))
-					}))
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
 				cs.Register("git rev-parse --symbolic-full-name feature@{push}", 0, "refs/remotes/origin/feature")
@@ -769,7 +724,7 @@ func Test_createRun(t *testing.T) {
 					}
 				}
 			},
-			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
+			wantErr:        "not all features are supported: adding a pull request to projects is not supported with REST",
 			expectedErrOut: "\nCreating pull request for feature into master in OWNER/REPO\n\n",
 		},
 		{
@@ -788,18 +743,13 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } } }
-							`, func(input map[string]any) {
-						assert.Equal(t, false, input["maintainerCanModify"].(bool))
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
+						assert.Equal(t, false, input["maintainer_can_modify"].(bool))
 						assert.Equal(t, "my title", input["title"].(string))
 						assert.Equal(t, "my body", input["body"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "feature", input["headRefName"].(string))
+						assert.Equal(t, "master", input["base"].(string))
+						assert.Equal(t, "feature", input["head"].(string))
 					}))
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
@@ -845,14 +795,10 @@ func Test_createRun(t *testing.T) {
 						assert.Equal(t, true, payload["default_branch_only"])
 					}))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							}}}}`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "monalisa:feature", input["headRefName"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
+						assert.Equal(t, "master", input["base"].(string))
+						assert.Equal(t, "monalisa:feature", input["head"].(string))
 					}))
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
@@ -907,14 +853,10 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } } }`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "monalisa:feature", input["headRefName"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
+						assert.Equal(t, "master", input["base"].(string))
+						assert.Equal(t, "monalisa:feature", input["head"].(string))
 					}))
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
@@ -938,15 +880,10 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-			{ "data": { "createPullRequest": { "pullRequest": {
-				"URL": "https://github.com/OWNER/REPO/pull/12"
-			} } } }
-			`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
-						assert.Equal(t, "master", input["baseRefName"].(string))
-						assert.Equal(t, "my-feat2", input["headRefName"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
+						assert.Equal(t, "master", input["base"].(string))
+						assert.Equal(t, "my-feat2", input["head"].(string))
 					}))
 			},
 			customBranchConfig: true,
@@ -976,21 +913,20 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "pullRequestTemplates": [
-						{ "filename": "template1",
-						  "body": "this is a bug" },
-						{ "filename": "template2",
-						  "body": "this is an enhancement" }
-					] } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{ "name": "template1.md", "path": ".github/PULL_REQUEST_TEMPLATE/template1.md", "type": "file" },
+						{ "name": "template2.md", "path": ".github/PULL_REQUEST_TEMPLATE/template2.md", "type": "file" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-				{ "data": { "createPullRequest": { "pullRequest": {
-					"URL": "https://github.com/OWNER/REPO/pull/12"
-				} } } }
-				`, func(input map[string]any) {
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/template1.md"),
+					httpmock.StringResponse(`{ "content": "this is a bug", "encoding": "" }`))
+				reg.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/template2.md"),
+					httpmock.StringResponse(`{ "content": "this is an enhancement", "encoding": "" }`))
+				reg.Register(
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
 						assert.Equal(t, "my title", input["title"].(string))
 						assert.Equal(t, "- **commit 1**\n- **commit 0**\n\nthis is a bug", input["body"].(string))
 					}))
@@ -1011,7 +947,7 @@ func Test_createRun(t *testing.T) {
 					case "What's next?":
 						return 0, nil
 					case "Choose a template":
-						return prompter.IndexFor(opts, "template1")
+						return prompter.IndexFor(opts, "template1.md")
 					default:
 						return -1, prompter.NoSuchPromptErr(p)
 					}
@@ -1031,7 +967,6 @@ func Test_createRun(t *testing.T) {
 				opts.HeadBranch = "feature"
 				opts.Assignees = []string{"monalisa"}
 				opts.Labels = []string{"bug", "todo"}
-				opts.Projects = []string{"roadmap"}
 				opts.Reviewers = []string{"hubot", "monalisa", "OWNER/core", "OWNER/robots"}
 				opts.Milestone = "big one.oh"
 				return func() {}
@@ -1049,58 +984,24 @@ func Test_createRun(t *testing.T) {
 						{ "title": "GA", "node_id": "GAID", "number": 1 },
 						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
 					]`))
-				mockRetrieveProjects(t, reg)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "createPullRequest": { "pullRequest": {
-						"id": "NEWPULLID",
-						"URL": "https://github.com/OWNER/REPO/pull/12"
-					} } } }
-				`, func(inputs map[string]any) {
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "NEWPULLID", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(inputs map[string]any) {
 						assert.Equal(t, "TITLE", inputs["title"])
 						assert.Equal(t, "BODY", inputs["body"])
-						if v, ok := inputs["assigneeIds"]; ok {
-							t.Errorf("did not expect assigneeIds: %v", v)
-						}
-						if v, ok := inputs["userIds"]; ok {
-							t.Errorf("did not expect userIds: %v", v)
-						}
 					}))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreateMetadata\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "updatePullRequest": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						if _, ok := inputs["assigneeIds"]; ok {
-							t.Error("did not expect assigneeIds in updatePullRequest when ApiActorsSupported is true")
-						}
-						assert.Equal(t, []any{"BUGID", "TODOID"}, inputs["labelIds"])
-						assert.Equal(t, []any{"ROADMAPID"}, inputs["projectIds"])
-						assert.Equal(t, "BIGONEID", inputs["milestoneId"])
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/12"),
+					httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"monalisa"}, inputs["assignees"])
+						assert.Equal(t, []any{"bug", "TODO"}, inputs["labels"])
+						assert.Equal(t, float64(2), inputs["milestone"])
 					}))
 				reg.Register(
-					httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "replaceActorsForAssignable": { "__typename": "" } } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["assignableId"])
-						assert.Equal(t, []any{"monalisa"}, inputs["actorLogins"])
-					}))
-				reg.Register(
-					httpmock.GraphQL(`mutation RequestReviewsByLogin\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "requestReviewsByLogin": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						assert.Equal(t, []any{"hubot", "monalisa"}, inputs["userLogins"])
-						assert.Equal(t, []any{"OWNER/core", "OWNER/robots"}, inputs["teamSlugs"])
-						assert.Equal(t, true, inputs["union"])
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls/12/requested_reviewers"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"hubot", "monalisa"}, inputs["reviewers"])
+						assert.Equal(t, []any{"core", "robots"}, inputs["team_reviewers"])
 					}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
@@ -1197,22 +1098,20 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`
-				{ "data": { "repository": { "pullRequestTemplates": [
-					{ "filename": "template1",
-					  "body": "this is a bug" },
-					{ "filename": "template2",
-					  "body": "this is an enhancement" }
-				] } } }`),
-				)
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{ "name": "template1.md", "path": ".github/PULL_REQUEST_TEMPLATE/template1.md", "type": "file" },
+						{ "name": "template2.md", "path": ".github/PULL_REQUEST_TEMPLATE/template2.md", "type": "file" }
+					]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-			{ "data": { "createPullRequest": { "pullRequest": {
-				"URL": "https://github.com/OWNER/REPO/pull/12"
-			} } } }
-			`, func(input map[string]any) {
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/template1.md"),
+					httpmock.StringResponse(`{ "content": "this is a bug", "encoding": "" }`))
+				reg.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/template2.md"),
+					httpmock.StringResponse(`{ "content": "this is an enhancement", "encoding": "" }`))
+				reg.Register(
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
 						assert.Equal(t, true, input["draft"].(bool))
 					}))
 			},
@@ -1247,31 +1146,15 @@ func Test_createRun(t *testing.T) {
 			tty:  true,
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"login": "OWNER"}`))
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
-					httpmock.StringResponse(`[
-						{ "login": "jillValentine", "node_id": "JILLID" }
-					]`))
-				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "requestReviews": {
-							"clientMutationId": ""
-						} } }
-					`, func(inputs map[string]any) {
-						assert.Equal(t, []any{"JILLID"}, inputs["userIds"])
-					}))
-				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }
-					`, func(input map[string]any) {
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
 						assert.Equal(t, "recovered title", input["title"].(string))
 						assert.Equal(t, "recovered body", input["body"].(string))
+					}))
+				reg.Register(
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls/12/requested_reviewers"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"jillValentine"}, inputs["reviewers"])
 					}))
 			},
 			cmdStubs: func(cs *run.CommandStubber) {
@@ -1387,18 +1270,12 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[]`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{
-						"data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } }
-						}
-						`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "first commit of pr", input["title"], "pr title should be first commit message")
 							assert.Equal(t, "first commit description", input["body"], "pr body should be first commit description")
@@ -1427,14 +1304,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{
-						"data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } }
-						}
-						`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "first commit of pr", input["title"], "pr title should be first commit message")
 							assert.Equal(t, "first commit description", input["body"], "pr body should be first commit description")
@@ -1463,14 +1334,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{
-						"data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } }
-						}
-						`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "feature", input["title"], "pr title should be branch name")
 							assert.Equal(t, "- **first commit of pr**\n  first commit with super long description, with super long description, with super long description, with super long description.\n\n- **second commit of pr**\n  second commit description", input["body"], "pr body should be commits msg+body")
@@ -1485,14 +1350,8 @@ func Test_createRun(t *testing.T) {
 			name: "editor",
 			httpStubs: func(r *httpmock.Registry, t *testing.T) {
 				r.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{
-						"data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } }
-						}
-				`, func(inputs map[string]any) {
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(inputs map[string]any) {
 						assert.Equal(t, "title", inputs["title"])
 						assert.Equal(t, "body", inputs["body"])
 					}))
@@ -1540,17 +1399,12 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-							{ "data": { "createPullRequest": { "pullRequest": {
-								"URL": "https://github.com/OWNER/REPO/pull/12"
-							} } } }
-							`, func(input map[string]any) {
-						assert.Equal(t, "REPOID", input["repositoryId"].(string))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
 						assert.Equal(t, "my title", input["title"].(string))
 						assert.Equal(t, "my body", input["body"].(string))
-						assert.Equal(t, "feature/feat2", input["baseRefName"].(string))
-						assert.Equal(t, "monalisa:task1", input["headRefName"].(string))
+						assert.Equal(t, "feature/feat2", input["base"].(string))
+						assert.Equal(t, "monalisa:task1", input["head"].(string))
 					}))
 			},
 			customBranchConfig: true,
@@ -1571,17 +1425,13 @@ func Test_createRun(t *testing.T) {
 			name: "--head contains <user>:<branch> syntax",
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
-							assert.Equal(t, "REPOID", input["repositoryId"])
 							assert.Equal(t, "my title", input["title"])
 							assert.Equal(t, "my body", input["body"])
-							assert.Equal(t, "master", input["baseRefName"])
-							assert.Equal(t, "otherowner:feature", input["headRefName"])
+							assert.Equal(t, "master", input["base"])
+							assert.Equal(t, "otherowner:feature", input["head"])
 						}))
 			},
 			setup: func(opts *CreateOptions, t *testing.T) func() {
@@ -1607,31 +1457,20 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12",
-							"id": "NEWPULLID"
-						} } } }`,
-						func(input map[string]any) {}))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "NEWPULLID", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {}))
 				reg.Register(
-					httpmock.GraphQL(`mutation RequestReviewsByLogin\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "requestReviewsByLogin": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						assert.Equal(t, []any{"hubot", "monalisa"}, inputs["userLogins"])
-						assert.Equal(t, []any{"org/core", "org/robots"}, inputs["teamSlugs"])
-						assert.Equal(t, true, inputs["union"])
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls/12/requested_reviewers"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"hubot", "monalisa"}, inputs["reviewers"])
+						assert.Equal(t, []any{"core", "robots"}, inputs["team_reviewers"])
 					}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
 			expectedErrOut: "",
 		},
 		{
-			name: "@copilot reviewer resolves to bot login",
+			name: "@copilot reviewer returns not supported",
 			setup: func(opts *CreateOptions, t *testing.T) func() {
 				opts.TitleProvided = true
 				opts.BodyProvided = true
@@ -1641,29 +1480,7 @@ func Test_createRun(t *testing.T) {
 				opts.HeadBranch = "feature"
 				return func() {}
 			},
-			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
-				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12",
-							"id": "NEWPULLID"
-						} } } }`,
-						func(input map[string]any) {}))
-				reg.Register(
-					httpmock.GraphQL(`mutation RequestReviewsByLogin\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "requestReviewsByLogin": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						assert.Equal(t, []any{"hubot"}, inputs["userLogins"])
-						assert.Equal(t, []any{"copilot-pull-request-reviewer[bot]"}, inputs["botLogins"])
-						assert.Equal(t, true, inputs["union"])
-					}))
-			},
-			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
+			wantErr:        "not all features are supported: requesting Copilot as a reviewer is not supported with REST",
 			expectedErrOut: "",
 		},
 		{
@@ -1703,15 +1520,12 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[]`))
 				attachments.StubUpload(reg, 1234, "shot.png", 201, `{"url": "https://github.com/user-attachments/assets/ASSET"}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
@@ -1766,15 +1580,12 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[]`))
 				attachments.StubUpload(reg, 1234, "shot.png", 201, `{"url": "https://github.com/user-attachments/assets/ASSET"}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
@@ -1794,11 +1605,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				attachments.StubUpload(reg, 1234, "shot.png", 201, `{"url": "https://github.com/user-attachments/assets/ASSET"}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "before ![the shot](https://github.com/user-attachments/assets/ASSET) after", input["body"])
 						}))
@@ -1821,11 +1629,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				attachments.StubUpload(reg, 1234, "diagram.png", 201, `{"url": "https://github.com/user-attachments/assets/ASSET"}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "the plan ![diagram](https://github.com/user-attachments/assets/ASSET)", input["body"])
 						}))
@@ -1856,11 +1661,8 @@ func Test_createRun(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				attachments.StubUploadToHost(t, reg, "uploads.acme.ghe.com", 1234, "shot.png", 201, `{"url": "https://acme.ghe.com/user-attachments/assets/ASSET"}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://acme.ghe.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://acme.ghe.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "my body\n\n![shot](https://acme.ghe.com/user-attachments/assets/ASSET)", input["body"])
 						}))
@@ -1882,11 +1684,8 @@ func Test_createRun(t *testing.T) {
 				attachments.StubUpload(reg, 1234, "good.png", 201, `{"url": "https://github.com/user-attachments/assets/ASSET"}`)
 				attachments.StubUpload(reg, 1234, "bad.png", 404, `{}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(input map[string]any) {
 							assert.Equal(t, "my body\n\n![good](https://github.com/user-attachments/assets/ASSET)", input["body"])
 						}))
@@ -1908,7 +1707,7 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				attachments.StubUpload(reg, 1234, "shot.png", 404, `{}`)
-				reg.Exclude(t, httpmock.GraphQL(`mutation PullRequestCreate\b`))
+				reg.Exclude(t, httpmock.REST("POST", "repos/OWNER/REPO/pulls"))
 			},
 			wantErr: "could not upload ./shot.png: attaching files requires write access to the repository\nno pull request was created",
 		},
@@ -1925,7 +1724,7 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Exclude(t, httpmock.REST("POST", "user-attachments/assets"))
-				reg.Exclude(t, httpmock.GraphQL(`mutation PullRequestCreate\b`))
+				reg.Exclude(t, httpmock.REST("POST", "repos/OWNER/REPO/pulls"))
 			},
 			wantErr: "cannot embed a video as a reference-style image: ./clip.mp4\nno pull request was created",
 		},
@@ -1944,10 +1743,10 @@ func Test_createRun(t *testing.T) {
 				attachments.StubUpload(reg, 1234, "good.png", 201, `{"url": "https://github.com/user-attachments/assets/ASSET"}`)
 				attachments.StubUpload(reg, 1234, "bad.png", 404, `{}`)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.StringResponse(`{"errors":[{"message":"the create failed"}]}`))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.StatusJSONResponse(500, struct{ Message string }{Message: "the create failed"}))
 			},
-			wantErr:        "could not upload ./bad.png: attaching files requires write access to the repository\npull request create failed: GraphQL: the create failed",
+			wantErr: "could not upload ./bad.png: attaching files requires write access to the repository\npull request create failed: HTTP 500: the create failed (https://api.github.com/repos/OWNER/REPO/pulls)",
 			wantOperations: &attachments.UploadResult{AppendOperations: 1},
 		},
 		{
@@ -1964,7 +1763,7 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Exclude(t, httpmock.REST("POST", "user-attachments/assets"))
-				reg.Exclude(t, httpmock.GraphQL(`mutation PullRequestCreate\b`))
+				reg.Exclude(t, httpmock.REST("POST", "repos/OWNER/REPO/pulls"))
 			},
 			wantErr: "attaching files requires write access to the repository",
 		},
@@ -1983,7 +1782,7 @@ func Test_createRun(t *testing.T) {
 			repoPermission: "TRIAGE",
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Exclude(t, httpmock.REST("POST", "user-attachments/assets"))
-				reg.Exclude(t, httpmock.GraphQL(`mutation PullRequestCreate\b`))
+				reg.Exclude(t, httpmock.REST("POST", "repos/OWNER/REPO/pulls"))
 			},
 			wantErr: "attaching files requires write access to the repository",
 		},
@@ -2136,15 +1935,6 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"login": "OWNER"}`))
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
-					httpmock.StringResponse(`[
-						{ "login": "hubot", "node_id": "HUBOTID" },
-						{ "login": "MonaLisa", "node_id": "MONAID" }
-					]`))
-				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
 					httpmock.StringResponse(`[
 						{ "name": "TODO", "node_id": "TODOID" },
@@ -2155,12 +1945,6 @@ func Test_createRun_GHES(t *testing.T) {
 					httpmock.StringResponse(`[
 						{ "title": "GA", "node_id": "GAID", "number": 1 },
 						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
-					]`))
-				reg.Register(
-					httpmock.REST("GET", "orgs/OWNER/teams"),
-					httpmock.StringResponse(`[
-						{ "slug": "core", "node_id": "COREID" },
-						{ "slug": "robots", "node_id": "ROBOTID" }
 					]`))
 			},
 			expectedOutputs: []string{
@@ -2199,15 +1983,6 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"login": "OWNER"}`))
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
-					httpmock.StringResponse(`[
-						{ "login": "hubot", "node_id": "HUBOTID" },
-						{ "login": "MonaLisa", "node_id": "MONAID" }
-					]`))
-				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
 					httpmock.StringResponse(`[
 						{ "name": "TODO", "node_id": "TODOID" },
@@ -2218,12 +1993,6 @@ func Test_createRun_GHES(t *testing.T) {
 					httpmock.StringResponse(`[
 						{ "title": "GA", "node_id": "GAID", "number": 1 },
 						{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
-					]`))
-				reg.Register(
-					httpmock.REST("GET", "orgs/OWNER/teams"),
-					httpmock.StringResponse(`[
-						{ "slug": "core", "node_id": "COREID" },
-						{ "slug": "robots", "node_id": "ROBOTID" }
 					]`))
 			},
 			expectedOutputs: []string{
@@ -2262,39 +2031,14 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12",
-							"id": "NEWPULLID"
-						} } } }`,
-						func(input map[string]any) {}))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "NEWPULLID", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {}))
+				reg.Exclude(t, httpmock.REST("GET", "orgs/OWNER/teams"))
 				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
-					httpmock.StringResponse(`[
-						{ "login": "hubot", "node_id": "HUBOTID" },
-						{ "login": "MonaLisa", "node_id": "MONAID" }
-					]`))
-				reg.Register(
-					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"login": "monalisa"}`))
-				reg.Register(
-					httpmock.REST("GET", "orgs/OWNER/teams"),
-					httpmock.StringResponse(`[
-						{ "slug": "core", "node_id": "COREID" },
-						{ "slug": "robots", "node_id": "ROBOTID" }
-					]`))
-				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "requestReviews": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						assert.Equal(t, []any{"HUBOTID", "MONAID"}, inputs["userIds"])
-						assert.Equal(t, []any{"COREID", "ROBOTID"}, inputs["teamIds"])
-						assert.Equal(t, true, inputs["union"])
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls/12/requested_reviewers"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"hubot", "monalisa"}, inputs["reviewers"])
+						assert.Equal(t, []any{"core", "robots"}, inputs["team_reviewers"])
 					}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
@@ -2313,37 +2057,17 @@ func Test_createRun_GHES(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry, t *testing.T) {
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"URL": "https://github.com/OWNER/REPO/pull/12",
-							"id": "NEWPULLID"
-						} } } }`,
-						func(input map[string]any) {}))
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
-					httpmock.StringResponse(`[
-						{ "login": "hubot", "node_id": "HUBOTID" },
-						{ "login": "MonaLisa", "node_id": "MONAID" }
-					]`))
-				reg.Register(
-					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"login": "monalisa"}`))
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "NEWPULLID", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {}))
 				reg.Exclude(
 					t,
 					httpmock.REST("GET", "orgs/OWNER/teams"),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "requestReviews": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						assert.Equal(t, []any{"HUBOTID", "MONAID"}, inputs["userIds"])
-						assert.NotEqual(t, []any{"COREID", "ROBOTID"}, inputs["teamIds"])
-						assert.Equal(t, true, inputs["union"])
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls/12/requested_reviewers"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"hubot", "monalisa"}, inputs["reviewers"])
+						assert.Empty(t, inputs["team_reviewers"])
 					}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
@@ -2389,7 +2113,7 @@ func Test_createRun_GHES(t *testing.T) {
 					case "What would you like to add?":
 						return prompter.IndexesFor(options, "Reviewers")
 					case "Reviewers":
-						return prompter.IndexesFor(options, "MonaLisa", "OWNER/core")
+						return prompter.IndexesFor(options, "monalisa", "OWNER/core")
 					default:
 						return nil, fmt.Errorf("unexpected multi-select prompt: %s", message)
 					}
@@ -2414,14 +2138,14 @@ func Test_createRun_GHES(t *testing.T) {
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login": "OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`),
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[]`),
 				)
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
 					httpmock.StringResponse(`[
 						{ "login": "hubot", "node_id": "HUBOTID" },
-						{ "login": "MonaLisa", "node_id": "MONAID" }
+						{ "login": "monalisa", "node_id": "MONAID" }
 					]`))
 				reg.Register(
 					httpmock.REST("GET", "orgs/OWNER/teams"),
@@ -2430,34 +2154,17 @@ func Test_createRun_GHES(t *testing.T) {
 						{ "slug": "robots", "node_id": "ROBOTID" }
 					]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createPullRequest": { "pullRequest": {
-							"id": "NEWPULLID",
-							"URL": "https://github.com/OWNER/REPO/pull/12"
-						} } } }
-						`,
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+					httpmock.RESTPayload(201, `{ "node_id": "NEWPULLID", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`,
 						func(inputs map[string]any) {
 							assert.Equal(t, "TITLE", inputs["title"])
 							assert.Equal(t, "BODY", inputs["body"])
-							if v, ok := inputs["assigneeIds"]; ok {
-								t.Errorf("did not expect assigneeIds: %v", v)
-							}
-							if v, ok := inputs["userIds"]; ok {
-								t.Errorf("did not expect userIds: %v", v)
-							}
 						}))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestCreateRequestReviews\b`),
-					httpmock.GraphQLMutation(`
-					{ "data": { "requestReviews": {
-						"clientMutationId": ""
-					} } }
-				`, func(inputs map[string]any) {
-						assert.Equal(t, "NEWPULLID", inputs["pullRequestId"])
-						assert.Equal(t, []any{"COREID"}, inputs["teamIds"])
-						assert.Equal(t, []any{"MONAID"}, inputs["userIds"])
-						assert.Equal(t, true, inputs["union"])
+					httpmock.REST("POST", "repos/OWNER/REPO/pulls/12/requested_reviewers"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, []any{"monalisa"}, inputs["reviewers"])
+						assert.Equal(t, []any{"core"}, inputs["team_reviewers"])
 					}))
 			},
 			expectedOut:    "https://github.com/OWNER/REPO/pull/12\n",
@@ -2577,14 +2284,10 @@ func TestRemoteGuessing(t *testing.T) {
 	defer reg.Verify(t)
 
 	reg.Register(
-		httpmock.GraphQL(`mutation PullRequestCreate\b`),
-		httpmock.GraphQLMutation(`
-				{ "data": { "createPullRequest": { "pullRequest": {
-					"URL": "https://github.com/OWNER/REPO/pull/12"
-				} } } }`, func(input map[string]any) {
-			assert.Equal(t, "REPOID", input["repositoryId"].(string))
-			assert.Equal(t, "master", input["baseRefName"].(string))
-			assert.Equal(t, "OTHEROWNER:feature", input["headRefName"].(string))
+		httpmock.REST("POST", "repos/OWNER/REPO/pulls"),
+		httpmock.RESTPayload(201, `{ "node_id": "PR1", "number": 12, "html_url": "https://github.com/OWNER/REPO/pull/12" }`, func(input map[string]any) {
+			assert.Equal(t, "master", input["base"].(string))
+			assert.Equal(t, "OTHEROWNER:feature", input["head"].(string))
 		}))
 
 	ios, _, _, _ := iostreams.Test()
@@ -2810,42 +2513,13 @@ func Test_generateCompareURL(t *testing.T) {
 				},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				// Ensure no v1 projects are requestd
-				// ( is required to avoid matching projectsV2
 				reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-					httpmock.StringResponse(`
-							{ "data": { "repository": { "projectsV2": {
-								"nodes": [
-									{ "title": "ProjectTitle", "id": "PROJECTV2ID", "resourcePath": "/OWNER/REPO/projects/3" }
-								],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
-				reg.Register(
-					httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-					httpmock.StringResponse(`
-							{ "data": { "organization": { "projectsV2": {
-								"nodes": [],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
-				reg.Register(
-					httpmock.GraphQL(`query UserProjectV2List\b`),
-					httpmock.StringResponse(`
-							{ "data": { "viewer": { "projectsV2": {
-								"nodes": [],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
 			},
 			state: shared.IssueMetadataState{
 				ProjectTitles: []string{"ProjectTitle"},
 			},
 			projectsV1Support: gh.ProjectsV1Unsupported,
-			want:              "https://github.com/OWNER/REPO/compare/main...feature?body=&expand=1&projects=OWNER%2FREPO%2F3",
-			wantErr:           false,
+			wantErr:           true,
 		},
 		{
 			name: "with projects, v1 support",
@@ -2860,7 +2534,6 @@ func Test_generateCompareURL(t *testing.T) {
 				ProjectTitles: []string{"ProjectV1Title"},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				// v1 project query responses
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/projects"),
 					httpmock.StringResponse(`[
@@ -2869,31 +2542,6 @@ func Test_generateCompareURL(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "orgs/OWNER/projects"),
 					httpmock.StringResponse(`[]`))
-				// v2 project query responses
-				reg.Register(
-					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-					httpmock.StringResponse(`
-							{ "data": { "repository": { "projectsV2": {
-								"nodes": [],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
-				reg.Register(
-					httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-					httpmock.StringResponse(`
-							{ "data": { "organization": { "projectsV2": {
-								"nodes": [],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
-				reg.Register(
-					httpmock.GraphQL(`query UserProjectV2List\b`),
-					httpmock.StringResponse(`
-							{ "data": { "viewer": { "projectsV2": {
-								"nodes": [],
-								"pageInfo": { "hasNextPage": false }
-							} } } }
-							`))
 			},
 			projectsV1Support: gh.ProjectsV1Supported,
 			want:              "https://github.com/OWNER/REPO/compare/main...feature?body=&expand=1&projects=OWNER%2FREPO%2F1",
@@ -2932,478 +2580,12 @@ func mockRetrieveProjects(_ *testing.T, reg *httpmock.Registry) {
 			{ "name": "Roadmap", "node_id": "ROADMAPID", "html_url": "https://github.com/OWNER/REPO/projects/2" }
 		]`))
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-		httpmock.StringResponse(`
-				{ "data": { "repository": { "projectsV2": {
-					"nodes": [
-						{ "title": "CleanupV2", "id": "CLEANUPV2ID", "resourcePath": "/OWNER/REPO/projects/3" },
-						{ "title": "RoadmapV2", "id": "ROADMAPV2ID", "resourcePath": "/OWNER/REPO/projects/4" }
-					],
-					"pageInfo": { "hasNextPage": false }
-				} } } }
-				`))
-	reg.Register(
 		httpmock.REST("GET", "orgs/OWNER/projects"),
 		httpmock.StringResponse(`[
 			{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
 		]`))
-	reg.Register(
-		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-		httpmock.StringResponse(`
-				{ "data": { "organization": { "projectsV2": {
-					"nodes": [
-						{ "title": "TriageV2", "id": "TRIAGEV2ID", "resourcePath": "/orgs/ORG/projects/2" }
-					],
-					"pageInfo": { "hasNextPage": false }
-				} } } }
-				`))
-	reg.Register(
-		httpmock.GraphQL(`query UserProjectV2List\b`),
-		httpmock.StringResponse(`
-				{ "data": { "viewer": { "projectsV2": {
-					"nodes": [
-						{ "title": "MonalisaV2", "id": "MONALISAV2ID", "resourcePath": "/user/MONALISA/projects/2" }
-					],
-					"pageInfo": { "hasNextPage": false }
-				} } } }
-				`))
 }
 
-// TODO projectsV1Deprecation
-// Remove this test.
-func TestProjectsV1Deprecation(t *testing.T) {
-
-	t.Run("non-interactive submission", func(t *testing.T) {
-		t.Run("when projects v1 is supported, queries for it", func(t *testing.T) {
-			ios, _, _, _ := iostreams.Test()
-
-			reg := &httpmock.Registry{}
-			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
-			reg.Register(
-				// ( is required to avoid matching projectsV2
-				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
-				// Simulate a GraphQL error to early exit the test.
-				httpmock.StatusStringResponse(500, ""),
-			)
-
-			cs, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			cs.Register(`git config --get-regexp \^branch\\\..+\\\.\(remote\|merge\|pushremote\|gh-merge-base\)\$`, 0, "")
-
-			// Ignore the error because we have no way to really stub it without
-			// fully stubbing a GQL error structure in the request body.
-			_ = createRun(&CreateOptions{
-				Detector: &fd.EnabledDetectorMock{},
-				IO:       ios,
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				GitClient: &git.Client{
-					GhPath:  "some/path/gh",
-					GitPath: "some/path/git",
-				},
-				Remotes: func() (context.Remotes, error) {
-					return context.Remotes{
-						{
-							Remote: &git.Remote{
-								Name:     "upstream",
-								Resolved: "base",
-							},
-							Repo: ghrepo.New("OWNER", "REPO"),
-						},
-					}, nil
-				},
-				Finder: shared.NewMockFinder("feature", nil, nil),
-
-				HeadBranch: "feature",
-
-				TitleProvided: true,
-				BodyProvided:  true,
-				Title:         "Test Title",
-				Body:          "Test Body",
-
-				// Required to force a lookup of projects
-				Projects: []string{"Project"},
-			})
-
-			// Verify that our request contained projects
-			reg.Verify(t)
-		})
-
-		t.Run("when projects v1 is not supported, does not query for it", func(t *testing.T) {
-			ios, _, _, _ := iostreams.Test()
-
-			reg := &httpmock.Registry{}
-			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
-			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
-
-			cs, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			cs.Register(`git config --get-regexp \^branch\\\..+\\\.\(remote\|merge\|pushremote\|gh-merge-base\)\$`, 0, "")
-
-			// Ignore the error because we're not really interested in it.
-			_ = createRun(&CreateOptions{
-				Detector: &fd.DisabledDetectorMock{},
-				IO:       ios,
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				GitClient: &git.Client{
-					GhPath:  "some/path/gh",
-					GitPath: "some/path/git",
-				},
-				Remotes: func() (context.Remotes, error) {
-					return context.Remotes{
-						{
-							Remote: &git.Remote{
-								Name:     "upstream",
-								Resolved: "base",
-							},
-							Repo: ghrepo.New("OWNER", "REPO"),
-						},
-					}, nil
-				},
-				Finder: shared.NewMockFinder("feature", nil, nil),
-
-				HeadBranch: "feature",
-
-				TitleProvided: true,
-				BodyProvided:  true,
-				Title:         "Test Title",
-				Body:          "Test Body",
-
-				// Required to force a lookup of projects
-				Projects: []string{"Project"},
-			})
-
-			// Verify that our request contained projectCards
-			reg.Verify(t)
-		})
-	})
-
-	t.Run("interactive submission", func(t *testing.T) {
-		t.Run("when projects v1 is supported, queries for it", func(t *testing.T) {
-			cs, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			cs.Register(`git config --get-regexp \^branch\\\..+\\\.\(remote\|merge\|pushremote\|gh-merge-base\)\$`, 0, "")
-			cs.Register("git -c log.ShowSignature=false log --pretty=format:%H%x00%s%x00%b%x00 --cherry origin/master...feature", 0, "")
-			cs.Register(`git rev-parse --show-toplevel`, 0, "")
-
-			// When the command is run
-			reg := &httpmock.Registry{}
-			reg.StubRepoResponse("OWNER", "REPO")
-
-			reg.Register(
-				httpmock.GraphQL(`query PullRequestTemplates\b`),
-				httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`),
-			)
-
-			reg.Register(
-				// ( is required to avoid matching projectsV2
-				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
-				// Simulate a GraphQL error to early exit the test.
-				httpmock.StatusStringResponse(500, ""),
-			)
-
-			// Register a handler to check for projects V2 just to avoid the registry panicking, even
-			// though we return a 500 error. This is because the project lookup is done in parallel
-			// so the previous error doesn't early exit.
-			reg.Register(
-				httpmock.GraphQL(`projectsV2`),
-				// Simulate a GraphQL error to early exit the test.
-				httpmock.StatusStringResponse(500, ""),
-			)
-
-			ios, _, _, _ := iostreams.Test()
-			ios.SetStdinTTY(true)
-			ios.SetStdoutTTY(true)
-			ios.SetStderrTTY(true)
-
-			pm := &prompter.PrompterMock{}
-			pm.InputFunc = func(p, _ string) (string, error) {
-				if p == "Title (required)" {
-					return "Test Title", nil
-				} else {
-					return "", prompter.NoSuchPromptErr(p)
-				}
-			}
-			pm.MarkdownEditorFunc = func(p, _ string, ba bool) (string, error) {
-				if p == "Body" {
-					return "Test Body", nil
-				} else {
-					return "", prompter.NoSuchPromptErr(p)
-				}
-			}
-			pm.SelectFunc = func(p, _ string, opts []string) (int, error) {
-				switch p {
-				case "Choose a template":
-					return 0, nil
-				case "What's next?":
-					return prompter.IndexFor(opts, "Add metadata")
-				default:
-					return -1, prompter.NoSuchPromptErr(p)
-				}
-			}
-			pm.MultiSelectFunc = func(p string, _ []string, opts []string) ([]int, error) {
-				return prompter.IndexesFor(opts, "Projects")
-			}
-
-			opts := CreateOptions{
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				Config: func() (gh.Config, error) {
-					return config.NewMockConfig(), nil
-				},
-				Browser:  &browser.Stub{},
-				IO:       ios,
-				Prompter: pm,
-				GitClient: &git.Client{
-					GhPath:  "some/path/gh",
-					GitPath: "some/path/git",
-				},
-				Finder:   shared.NewMockFinder("feature", nil, nil),
-				Detector: &fd.EnabledDetectorMock{},
-				Remotes: func() (context.Remotes, error) {
-					return context.Remotes{
-						{
-							Remote: &git.Remote{
-								Name: "origin",
-							},
-							Repo: ghrepo.New("OWNER", "REPO"),
-						},
-					}, nil
-				},
-				Branch: func() (string, error) {
-					return "feature", nil
-				},
-
-				HeadBranch: "feature",
-			}
-
-			// Ignore the error because we have no way to really stub it without
-			// fully stubbing a GQL error structure in the request body.
-			_ = createRun(&opts)
-
-			// Verify that our request contained projects
-			reg.Verify(t)
-		})
-
-		t.Run("when projects v1 is not supported, does not query for it", func(t *testing.T) {
-			cs, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			cs.Register(`git config --get-regexp \^branch\\\..+\\\.\(remote\|merge\|pushremote\|gh-merge-base\)\$`, 0, "")
-			cs.Register("git -c log.ShowSignature=false log --pretty=format:%H%x00%s%x00%b%x00 --cherry origin/master...feature", 0, "")
-			cs.Register(`git rev-parse --show-toplevel`, 0, "")
-
-			// When the command is run
-			reg := &httpmock.Registry{}
-			reg.StubRepoResponse("OWNER", "REPO")
-
-			reg.Register(
-				httpmock.GraphQL(`query PullRequestTemplates\b`),
-				httpmock.StringResponse(`{ "data": { "repository": { "pullRequestTemplates": [] } } }`),
-			)
-
-			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
-
-			ios, _, _, _ := iostreams.Test()
-			ios.SetStdinTTY(true)
-			ios.SetStdoutTTY(true)
-			ios.SetStderrTTY(true)
-
-			pm := &prompter.PrompterMock{}
-			pm.InputFunc = func(p, _ string) (string, error) {
-				if p == "Title (required)" {
-					return "Test Title", nil
-				} else {
-					return "", prompter.NoSuchPromptErr(p)
-				}
-			}
-			pm.MarkdownEditorFunc = func(p, _ string, ba bool) (string, error) {
-				if p == "Body" {
-					return "Test Body", nil
-				} else {
-					return "", prompter.NoSuchPromptErr(p)
-				}
-			}
-			pm.SelectFunc = func(p, _ string, opts []string) (int, error) {
-				switch p {
-				case "Choose a template":
-					return 0, nil
-				case "What's next?":
-					return prompter.IndexFor(opts, "Add metadata")
-				default:
-					return -1, prompter.NoSuchPromptErr(p)
-				}
-			}
-			pm.MultiSelectFunc = func(p string, _ []string, opts []string) ([]int, error) {
-				return prompter.IndexesFor(opts, "Projects")
-			}
-
-			opts := CreateOptions{
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				Config: func() (gh.Config, error) {
-					return config.NewMockConfig(), nil
-				},
-				Browser:  &browser.Stub{},
-				IO:       ios,
-				Prompter: pm,
-				GitClient: &git.Client{
-					GhPath:  "some/path/gh",
-					GitPath: "some/path/git",
-				},
-				Finder:   shared.NewMockFinder("feature", nil, nil),
-				Detector: &fd.DisabledDetectorMock{},
-				Remotes: func() (context.Remotes, error) {
-					return context.Remotes{
-						{
-							Remote: &git.Remote{
-								Name: "origin",
-							},
-							Repo: ghrepo.New("OWNER", "REPO"),
-						},
-					}, nil
-				},
-				Branch: func() (string, error) {
-					return "feature", nil
-				},
-
-				HeadBranch: "feature",
-			}
-
-			// Ignore the error because we have no way to really stub it without
-			// fully stubbing a GQL error structure in the request body.
-			_ = createRun(&opts)
-
-			// Verify that our request did not contain projectCards
-			reg.Verify(t)
-		})
-	})
-
-	t.Run("web mode", func(t *testing.T) {
-		t.Run("when projects v1 is supported, queries for it", func(t *testing.T) {
-			ios, _, _, _ := iostreams.Test()
-
-			reg := &httpmock.Registry{}
-			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
-			reg.Register(
-				// ( is required to avoid matching projectsV2
-				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
-				// Simulate a GraphQL error to early exit the test.
-				httpmock.StatusStringResponse(500, ""),
-			)
-
-			cs, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			cs.Register(`git config --get-regexp \^branch\\\..+\\\.\(remote\|merge\|pushremote\|gh-merge-base\)\$`, 0, "")
-
-			// Ignore the error because we have no way to really stub it without
-			// fully stubbing a GQL error structure in the request body.
-			_ = createRun(&CreateOptions{
-				Detector: &fd.EnabledDetectorMock{},
-				IO:       ios,
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				GitClient: &git.Client{
-					GhPath:  "some/path/gh",
-					GitPath: "some/path/git",
-				},
-				Remotes: func() (context.Remotes, error) {
-					return context.Remotes{
-						{
-							Remote: &git.Remote{
-								Name:     "upstream",
-								Resolved: "base",
-							},
-							Repo: ghrepo.New("OWNER", "REPO"),
-						},
-					}, nil
-				},
-				Finder: shared.NewMockFinder("feature", nil, nil),
-
-				WebMode: true,
-
-				HeadBranch: "feature",
-
-				TitleProvided: true,
-				BodyProvided:  true,
-				Title:         "Test Title",
-				Body:          "Test Body",
-
-				// Required to force a lookup of projects
-				Projects: []string{"Project"},
-			})
-
-			// Verify that our request contained projects
-			reg.Verify(t)
-		})
-
-		t.Run("when projects v1 is not supported, does not query for it", func(t *testing.T) {
-			ios, _, _, _ := iostreams.Test()
-
-			reg := &httpmock.Registry{}
-			reg.StubRepoInfoResponse("OWNER", "REPO", "main")
-			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
-
-			cs, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			cs.Register(`git config --get-regexp \^branch\\\..+\\\.\(remote\|merge\|pushremote\|gh-merge-base\)\$`, 0, "")
-
-			// Ignore the error because we're not really interested in it.
-			_ = createRun(&CreateOptions{
-				Detector: &fd.DisabledDetectorMock{},
-				IO:       ios,
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				GitClient: &git.Client{
-					GhPath:  "some/path/gh",
-					GitPath: "some/path/git",
-				},
-				Remotes: func() (context.Remotes, error) {
-					return context.Remotes{
-						{
-							Remote: &git.Remote{
-								Name:     "upstream",
-								Resolved: "base",
-							},
-							Repo: ghrepo.New("OWNER", "REPO"),
-						},
-					}, nil
-				},
-				Finder: shared.NewMockFinder("feature", nil, nil),
-
-				WebMode: true,
-
-				HeadBranch: "feature",
-
-				TitleProvided: true,
-				BodyProvided:  true,
-				Title:         "Test Title",
-				Body:          "Test Body",
-
-				// Required to force a lookup of projects
-				Projects: []string{"Project"},
-			})
-
-			// Verify that our request did not contain projectCards
-			reg.Verify(t)
-		})
-	})
-}
 
 func Test_isSameRef(t *testing.T) {
 	tests := []struct {

@@ -280,7 +280,7 @@ func Test_RepoMetadata(t *testing.T) {
 		TeamReviewers: true,
 		Labels:        true,
 		ProjectsV1:    true,
-		ProjectsV2:    true,
+		ProjectsV2:    false,
 		Milestones:    true,
 	}
 
@@ -300,8 +300,8 @@ func Test_RepoMetadata(t *testing.T) {
 	http.Register(
 		httpmock.REST("GET", "repos/OWNER/REPO/milestones"),
 		httpmock.StringResponse(`[
-			{ "title": "GA", "node_id": "GAID" },
-			{ "title": "Big One.oh", "node_id": "BIGONEID" }
+			{ "title": "GA", "node_id": "GAID", "number": 1 },
+			{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
 		]`))
 	http.Register(
 		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
@@ -310,41 +310,10 @@ func Test_RepoMetadata(t *testing.T) {
 			{ "name": "Roadmap", "node_id": "ROADMAPID" }
 		]`))
 	http.Register(
-		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [
-				{ "title": "CleanupV2", "id": "CLEANUPV2ID" },
-				{ "title": "RoadmapV2", "id": "ROADMAPV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
 		httpmock.REST("GET", "orgs/OWNER/projects"),
 		httpmock.StringResponse(`[
 			{ "name": "Triage", "node_id": "TRIAGEID" }
 		]`))
-	http.Register(
-		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [
-				{ "title": "TriageV2", "id": "TRIAGEV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
-		httpmock.GraphQL(`query UserProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [
-				{ "title": "MonalisaV2", "id": "MONALISAV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
 	http.Register(
 		httpmock.REST("GET", "orgs/OWNER/teams"),
 		httpmock.StringResponse(`[
@@ -388,16 +357,23 @@ func Test_RepoMetadata(t *testing.T) {
 	}
 
 	expectedProjectIDs := []string{"TRIAGEID", "ROADMAPID"}
-	expectedProjectV2IDs := []string{"TRIAGEV2ID", "ROADMAPV2ID", "MONALISAV2ID"}
-	projectIDs, projectV2IDs, err := result.ProjectsTitlesToIDs([]string{"triage", "roadmap", "triagev2", "roadmapv2", "monalisav2"})
+	projectIDs, projectV2IDs, err := result.ProjectsTitlesToIDs([]string{"triage", "roadmap"})
 	if err != nil {
 		t.Errorf("error resolving projects: %v", err)
 	}
 	if !slices.Equal(projectIDs, expectedProjectIDs) {
 		t.Errorf("expected projects %v, got %v", expectedProjectIDs, projectIDs)
 	}
-	if !slices.Equal(projectV2IDs, expectedProjectV2IDs) {
-		t.Errorf("expected projectsV2 %v, got %v", expectedProjectV2IDs, projectV2IDs)
+	if len(projectV2IDs) != 0 {
+		t.Errorf("expected no projectsV2, got %v", projectV2IDs)
+	}
+
+	milestoneNumber, err := result.MilestoneToNumber("big one.oh")
+	if err != nil {
+		t.Errorf("error resolving milestone number: %v", err)
+	}
+	if milestoneNumber != 2 {
+		t.Errorf("expected milestone number 2, got %d", milestoneNumber)
 	}
 
 	expectedMilestoneID := "BIGONEID"
@@ -446,7 +422,7 @@ func Test_RepoMetadata_TeamsAreConditionallyFetched(t *testing.T) {
 }
 
 func Test_ProjectNamesToPaths(t *testing.T) {
-	t.Run("when projectsV1 is supported, requests them", func(t *testing.T) {
+	t.Run("when projectsV1 is supported, resolves V1 project paths", func(t *testing.T) {
 		http := &httpmock.Registry{}
 		client := newTestClient(http)
 
@@ -463,50 +439,19 @@ func Test_ProjectNamesToPaths(t *testing.T) {
 			httpmock.StringResponse(`[
 				{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
 			]`))
-		http.Register(
-			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [
-				{ "title": "CleanupV2", "id": "CLEANUPV2ID", "resourcePath": "/OWNER/REPO/projects/3" },
-				{ "title": "RoadmapV2", "id": "ROADMAPV2ID", "resourcePath": "/OWNER/REPO/projects/4" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		http.Register(
-			httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [
-				{ "title": "TriageV2", "id": "TRIAGEV2ID", "resourcePath": "/orgs/ORG/projects/2"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		http.Register(
-			httpmock.GraphQL(`query UserProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [
-				{ "title": "MonalisaV2", "id": "MONALISAV2ID", "resourcePath": "/users/MONALISA/projects/5"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
 
-		projectPaths, err := ProjectTitlesToPaths(client, repo, []string{"Triage", "Roadmap", "TriageV2", "RoadmapV2", "MonalisaV2"}, gh.ProjectsV1Supported)
+		projectPaths, err := ProjectTitlesToPaths(client, repo, []string{"Triage", "Roadmap"}, gh.ProjectsV1Supported)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		expectedProjectPaths := []string{"ORG/1", "OWNER/REPO/2", "ORG/2", "OWNER/REPO/4", "MONALISA/5"}
+		expectedProjectPaths := []string{"ORG/1", "OWNER/REPO/2"}
 		if !slices.Equal(projectPaths, expectedProjectPaths) {
 			t.Errorf("expected projects paths %v, got %v", expectedProjectPaths, projectPaths)
 		}
 	})
 
-	t.Run("when projectsV1 is not supported, does not request them", func(t *testing.T) {
+	t.Run("when projectsV1 is not supported, does not request V1 projects and returns not found for V2", func(t *testing.T) {
 		http := &httpmock.Registry{}
 		client := newTestClient(http)
 
@@ -520,81 +465,6 @@ func Test_ProjectNamesToPaths(t *testing.T) {
 			t,
 			httpmock.REST("GET", "orgs/OWNER/projects"),
 		)
-
-		http.Register(
-			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [
-				{ "title": "CleanupV2", "id": "CLEANUPV2ID", "resourcePath": "/OWNER/REPO/projects/3" },
-				{ "title": "RoadmapV2", "id": "ROADMAPV2ID", "resourcePath": "/OWNER/REPO/projects/4" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		http.Register(
-			httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [
-				{ "title": "TriageV2", "id": "TRIAGEV2ID", "resourcePath": "/orgs/ORG/projects/2"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		http.Register(
-			httpmock.GraphQL(`query UserProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [
-				{ "title": "MonalisaV2", "id": "MONALISAV2ID", "resourcePath": "/users/MONALISA/projects/5"  }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-
-		projectPaths, err := ProjectTitlesToPaths(client, repo, []string{"TriageV2", "RoadmapV2", "MonalisaV2"}, gh.ProjectsV1Unsupported)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		expectedProjectPaths := []string{"ORG/2", "OWNER/REPO/4", "MONALISA/5"}
-		if !slices.Equal(projectPaths, expectedProjectPaths) {
-			t.Errorf("expected projects paths %v, got %v", expectedProjectPaths, projectPaths)
-		}
-	})
-
-	t.Run("when a project is not found, returns an error", func(t *testing.T) {
-		http := &httpmock.Registry{}
-		client := newTestClient(http)
-
-		repo, _ := ghrepo.FromFullName("OWNER/REPO")
-
-		// No projects found
-		http.Register(
-			httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		http.Register(
-			httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-		http.Register(
-			httpmock.GraphQL(`query UserProjectV2List\b`),
-			httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
 
 		_, err := ProjectTitlesToPaths(client, repo, []string{"TriageV2"}, gh.ProjectsV1Unsupported)
 		require.Equal(t, err, fmt.Errorf("'TriageV2' not found"))

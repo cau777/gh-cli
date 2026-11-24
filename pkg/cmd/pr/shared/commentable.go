@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/attachments"
@@ -20,8 +23,85 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var errNoUserComments = errors.New("no comments found for current user")
-var errDeleteNotConfirmed = errors.New("deletion not confirmed")
+var (
+	errNoUserComments     = errors.New("no comments found for current user")
+	errDeleteNotConfirmed = errors.New("deletion not confirmed")
+	commentableURLNumRE   = regexp.MustCompile(`/(?:issues|pull)/(\d+)(?:$|[?#])`)
+)
+
+func commentableNumber(commentable Commentable) int {
+	switch c := commentable.(type) {
+	case api.PullRequest:
+		if c.Number > 0 {
+			return c.Number
+		}
+	case *api.PullRequest:
+		if c.Number > 0 {
+			return c.Number
+		}
+	case api.Issue:
+		if c.Number > 0 {
+			return c.Number
+		}
+	case *api.Issue:
+		if c.Number > 0 {
+			return c.Number
+		}
+	}
+	if np, ok := commentable.(interface{ CommentableNumber() int }); ok {
+		if n := np.CommentableNumber(); n > 0 {
+			return n
+		}
+	}
+	if m := commentableURLNumRE.FindStringSubmatch(commentable.Link()); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func resolveCurrentUserComments(commentable Commentable, opts *CommentableOptions) ([]api.Comment, error) {
+	comments := commentable.CurrentUserComments()
+	if len(comments) > 0 {
+		return comments, nil
+	}
+
+	var all []api.Comment
+	switch c := commentable.(type) {
+	case api.PullRequest:
+		all = c.Comments.Nodes
+	case *api.PullRequest:
+		all = c.Comments.Nodes
+	case api.Issue:
+		all = c.Comments.Nodes
+	case *api.Issue:
+		all = c.Comments.Nodes
+	}
+	if len(all) == 0 {
+		return nil, nil
+	}
+
+	// REST comment fetches cannot populate viewerDidAuthor without knowing the
+	// viewer login, so match against the authenticated login as a fallback.
+	if opts.HttpClient != nil {
+		httpClient, err := opts.HttpClient()
+		if err != nil {
+			return nil, err
+		}
+		apiClient := api.NewClientFromHTTP(httpClient)
+		login, err := api.CurrentLoginName(apiClient, opts.Host)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range all {
+			if strings.EqualFold(c.Author.Login, login) {
+				comments = append(comments, c)
+			}
+		}
+	}
+	return comments, nil
+}
 
 type InputType int
 
@@ -158,7 +238,7 @@ func CommentableRun(opts *CommentableOptions) error {
 	}
 	opts.Host = repo.RepoHost()
 	if opts.DeleteLast {
-		return deleteComment(commentable, opts)
+		return deleteComment(commentable, repo, opts)
 	}
 
 	// Guarded on the assets, because createComment and updateComment return
@@ -178,11 +258,11 @@ func CommentableRun(opts *CommentableOptions) error {
 
 	// Create new comment, bail before complexities of updating the last comment
 	if !opts.EditLast {
-		return createComment(commentable, opts, uploader)
+		return createComment(commentable, repo, opts, uploader)
 	}
 
 	// Update the last comment, handling success or unexpected errors accordingly
-	err = updateComment(commentable, opts, uploader)
+	err = updateComment(commentable, repo, opts, uploader)
 	if err == nil {
 		return nil
 	}
@@ -206,10 +286,10 @@ func CommentableRun(opts *CommentableOptions) error {
 		fmt.Fprintln(opts.IO.ErrOut, "No comments found. Creating a new comment.")
 	}
 
-	return createComment(commentable, opts, uploader)
+	return createComment(commentable, repo, opts, uploader)
 }
 
-func createComment(commentable Commentable, opts *CommentableOptions, uploader *attachments.Uploader) error {
+func createComment(commentable Commentable, repo ghrepo.Interface, opts *CommentableOptions, uploader *attachments.Uploader) error {
 	switch opts.InputType {
 	case InputTypeWeb:
 		openURL := commentable.Link() + "#issuecomment-new"
@@ -252,7 +332,12 @@ func createComment(commentable Commentable, opts *CommentableOptions, uploader *
 	}
 
 	apiClient := api.NewClientFromHTTP(httpClient)
-	params := api.CommentCreateInput{Body: body, SubjectId: commentable.Identifier()}
+	params := api.CommentCreateInput{
+		Body:      body,
+		SubjectId: commentable.Identifier(),
+		Repo:      repo,
+		Number:    commentableNumber(commentable),
+	}
 	url, err := api.CommentCreate(apiClient, opts.Host, params)
 	if err != nil {
 		// Upload first: an uploaded asset outlives the failed write, and the
@@ -267,8 +352,11 @@ func createComment(commentable Commentable, opts *CommentableOptions, uploader *
 	return uploadErr
 }
 
-func updateComment(commentable Commentable, opts *CommentableOptions, uploader *attachments.Uploader) error {
-	comments := commentable.CurrentUserComments()
+func updateComment(commentable Commentable, repo ghrepo.Interface, opts *CommentableOptions, uploader *attachments.Uploader) error {
+	comments, err := resolveCurrentUserComments(commentable, opts)
+	if err != nil {
+		return err
+	}
 	if len(comments) == 0 {
 		return errNoUserComments
 	}
@@ -324,7 +412,13 @@ func updateComment(commentable Commentable, opts *CommentableOptions, uploader *
 	}
 
 	apiClient := api.NewClientFromHTTP(httpClient)
-	params := api.CommentUpdateInput{Body: body, CommentId: lastComment.Identifier()}
+	params := api.CommentUpdateInput{
+		Body:              body,
+		CommentId:         lastComment.Identifier(),
+		Repo:              repo,
+		CommentDatabaseID: lastComment.DatabaseID,
+		CommentURL:        lastComment.Link(),
+	}
 	url, err := api.CommentUpdate(apiClient, opts.Host, params)
 	if err != nil {
 		// Upload first, for the same reason as createComment.
@@ -357,8 +451,11 @@ func bodyForWrite(opts *CommentableOptions, uploader *attachments.Uploader) (bod
 	return body, true, err
 }
 
-func deleteComment(commentable Commentable, opts *CommentableOptions) error {
-	comments := commentable.CurrentUserComments()
+func deleteComment(commentable Commentable, repo ghrepo.Interface, opts *CommentableOptions) error {
+	comments, err := resolveCurrentUserComments(commentable, opts)
+	if err != nil {
+		return err
+	}
 	if len(comments) == 0 {
 		return errNoUserComments
 	}
@@ -391,7 +488,12 @@ func deleteComment(commentable Commentable, opts *CommentableOptions) error {
 	}
 
 	apiClient := api.NewClientFromHTTP(httpClient)
-	params := api.CommentDeleteInput{CommentId: lastComment.Identifier()}
+	params := api.CommentDeleteInput{
+		CommentId:         lastComment.Identifier(),
+		Repo:              repo,
+		CommentDatabaseID: lastComment.DatabaseID,
+		CommentURL:        lastComment.Link(),
+	}
 	deletionErr := api.CommentDelete(apiClient, opts.Host, params)
 	if deletionErr != nil {
 		return deletionErr

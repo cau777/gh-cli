@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/cli/cli/v2/api"
-	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/httpmock"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -124,99 +122,18 @@ func TestPRReady(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
 
-	shared.StubFinderForRunCommandStyleTests(t, "123", &api.PullRequest{
-		ID:      "THE-ID",
-		Number:  123,
-		State:   "OPEN",
-		IsDraft: true,
-	}, ghrepo.New("OWNER", "REPO"))
-
-	http.Register(
-		httpmock.GraphQL(`mutation PullRequestReadyForReview\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
-	)
-
 	output, err := runCommand(http, true, "123")
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, api.ErrNotSupported)
 	assert.Equal(t, "", output.String())
-	assert.Equal(t, "✓ Pull request OWNER/REPO#123 is marked as \"ready for review\"\n", output.Stderr())
-}
-
-func TestPRReady_alreadyReady(t *testing.T) {
-	http := &httpmock.Registry{}
-	defer http.Verify(t)
-
-	shared.StubFinderForRunCommandStyleTests(t, "123", &api.PullRequest{
-		ID:      "THE-ID",
-		Number:  123,
-		State:   "OPEN",
-		IsDraft: false,
-	}, ghrepo.New("OWNER", "REPO"))
-
-	output, err := runCommand(http, true, "123")
-	assert.NoError(t, err)
-	assert.Equal(t, "", output.String())
-	assert.Equal(t, "! Pull request OWNER/REPO#123 is already \"ready for review\"\n", output.Stderr())
+	assert.Equal(t, "", output.Stderr())
 }
 
 func TestPRReadyUndo(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
 
-	shared.StubFinderForRunCommandStyleTests(t, "123", &api.PullRequest{
-		ID:      "THE-ID",
-		Number:  123,
-		State:   "OPEN",
-		IsDraft: false,
-	}, ghrepo.New("OWNER", "REPO"))
-
-	http.Register(
-		httpmock.GraphQL(`mutation ConvertPullRequestToDraft\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
-	)
-
 	output, err := runCommand(http, true, "123 --undo")
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, api.ErrNotSupported)
 	assert.Equal(t, "", output.String())
-	assert.Equal(t, "✓ Pull request OWNER/REPO#123 is converted to \"draft\"\n", output.Stderr())
-}
-
-func TestPRReadyUndo_alreadyDraft(t *testing.T) {
-	http := &httpmock.Registry{}
-	defer http.Verify(t)
-
-	shared.StubFinderForRunCommandStyleTests(t, "123", &api.PullRequest{
-		ID:      "THE-ID",
-		Number:  123,
-		State:   "OPEN",
-		IsDraft: true,
-	}, ghrepo.New("OWNER", "REPO"))
-
-	output, err := runCommand(http, true, "123 --undo")
-	assert.NoError(t, err)
-	assert.Equal(t, "", output.String())
-	assert.Equal(t, "! Pull request OWNER/REPO#123 is already \"in draft\"\n", output.Stderr())
-}
-
-func TestPRReady_closed(t *testing.T) {
-	http := &httpmock.Registry{}
-	defer http.Verify(t)
-
-	shared.StubFinderForRunCommandStyleTests(t, "123", &api.PullRequest{
-		ID:      "THE-ID",
-		Number:  123,
-		State:   "CLOSED",
-		IsDraft: true,
-	}, ghrepo.New("OWNER", "REPO"))
-
-	output, err := runCommand(http, true, "123")
-	assert.EqualError(t, err, "SilentError")
-	assert.Equal(t, "", output.String())
-	assert.Equal(t, "X Pull request OWNER/REPO#123 is closed. Only draft pull requests can be marked as \"ready for review\"\n", output.Stderr())
+	assert.Equal(t, "", output.Stderr())
 }

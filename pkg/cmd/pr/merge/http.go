@@ -1,12 +1,16 @@
 package merge
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/shurcooL/githubv4"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 type PullRequestMergeMethod int
@@ -28,131 +32,94 @@ const (
 )
 
 type mergePayload struct {
-	repo            ghrepo.Interface
-	pullRequestID   string
-	method          PullRequestMergeMethod
-	auto            bool
-	commitSubject   string
-	commitBody      string
-	setCommitBody   bool
-	expectedHeadOid string
-	authorEmail     string
-}
-
-// TODO: drop after githubv4 gets updated
-type EnablePullRequestAutoMergeInput struct {
-	githubv4.MergePullRequestInput
+	repo              ghrepo.Interface
+	pullRequestID     string
+	pullRequestNumber int
+	prTitle           string
+	prBody            string
+	headRefName       string
+	method            PullRequestMergeMethod
+	auto              bool
+	commitSubject     string
+	commitBody        string
+	setCommitBody     bool
+	expectedHeadOid   string
+	authorEmail       string
 }
 
 func mergePullRequest(client *http.Client, payload mergePayload) error {
-	input := githubv4.MergePullRequestInput{
-		PullRequestID: githubv4.ID(payload.pullRequestID),
+	if payload.auto {
+		return api.NotSupportedError("auto-merge and merge queue are not supported with REST")
+	}
+	if payload.authorEmail != "" {
+		return api.NotSupportedError("setting commit author email (--author-email) is not supported with REST")
 	}
 
+	var method string
 	switch payload.method {
 	case PullRequestMergeMethodMerge:
-		m := githubv4.PullRequestMergeMethodMerge
-		input.MergeMethod = &m
+		method = "merge"
 	case PullRequestMergeMethodRebase:
-		m := githubv4.PullRequestMergeMethodRebase
-		input.MergeMethod = &m
+		method = "rebase"
 	case PullRequestMergeMethodSquash:
-		m := githubv4.PullRequestMergeMethodSquash
-		input.MergeMethod = &m
+		method = "squash"
 	}
 
-	if payload.authorEmail != "" {
-		authorEmail := githubv4.String(payload.authorEmail)
-		input.AuthorEmail = &authorEmail
+	path, err := safeurl.JoinPath("repos", payload.repo.RepoOwner(), payload.repo.RepoName(), "pulls", strconv.Itoa(payload.pullRequestNumber), "merge")
+	if err != nil {
+		return err
 	}
-	if payload.commitSubject != "" {
-		commitHeadline := githubv4.String(payload.commitSubject)
-		input.CommitHeadline = &commitHeadline
+
+	reqBody := struct {
+		MergeMethod   string  `json:"merge_method,omitempty"`
+		CommitTitle   string  `json:"commit_title,omitempty"`
+		CommitMessage *string `json:"commit_message,omitempty"`
+		SHA           string  `json:"sha,omitempty"`
+	}{
+		MergeMethod: method,
+		CommitTitle: payload.commitSubject,
+		SHA:         payload.expectedHeadOid,
 	}
 	if payload.setCommitBody {
-		commitBody := githubv4.String(payload.commitBody)
-		input.CommitBody = &commitBody
+		reqBody.CommitMessage = &payload.commitBody
 	}
 
-	if payload.expectedHeadOid != "" {
-		expectedHeadOid := githubv4.GitObjectID(payload.expectedHeadOid)
-		input.ExpectedHeadOid = &expectedHeadOid
+	encoded, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
 	}
 
-	variables := map[string]any{
-		"input": input,
-	}
-
-	gql := api.NewClientFromHTTP(client)
-
-	if payload.auto {
-		var mutation struct {
-			EnablePullRequestAutoMerge struct {
-				ClientMutationId string
-			} `graphql:"enablePullRequestAutoMerge(input: $input)"`
-		}
-		variables["input"] = EnablePullRequestAutoMergeInput{input}
-		return gql.Mutate(payload.repo.RepoHost(), "PullRequestAutoMerge", &mutation, variables)
-	}
-
-	var mutation struct {
-		MergePullRequest struct {
-			ClientMutationId string
-		} `graphql:"mergePullRequest(input: $input)"`
-	}
-	return gql.Mutate(payload.repo.RepoHost(), "PullRequestMerge", &mutation, variables)
+	apiClient := api.NewClientFromHTTP(client)
+	return apiClient.REST(payload.repo.RepoHost(), http.MethodPut, path.String(), bytes.NewReader(encoded), nil)
 }
 
 func disableAutoMerge(client *http.Client, repo ghrepo.Interface, prID string) error {
-	var mutation struct {
-		DisablePullRequestAutoMerge struct {
-			ClientMutationId string
-		} `graphql:"disablePullRequestAutoMerge(input: {pullRequestId: $prID})"`
-	}
-
-	variables := map[string]any{
-		"prID": githubv4.ID(prID),
-	}
-
-	gql := api.NewClientFromHTTP(client)
-	return gql.Mutate(repo.RepoHost(), "PullRequestAutoMergeDisable", &mutation, variables)
+	return api.NotSupportedError("disabling auto-merge is not supported with REST")
 }
 
-func getMergeText(client *http.Client, repo ghrepo.Interface, prID string, mergeMethod PullRequestMergeMethod) (string, string, error) {
-	var method githubv4.PullRequestMergeMethod
-	switch mergeMethod {
+func getMergeText(client *http.Client, payload mergePayload) (string, string, error) {
+	switch payload.method {
 	case PullRequestMergeMethodMerge:
-		method = githubv4.PullRequestMergeMethodMerge
-	case PullRequestMergeMethodRebase:
-		method = githubv4.PullRequestMergeMethodRebase
+		subject := fmt.Sprintf("Merge pull request #%d from %s", payload.pullRequestNumber, payload.headRefName)
+		return subject, payload.prTitle, nil
 	case PullRequestMergeMethodSquash:
-		method = githubv4.PullRequestMergeMethodSquash
-	}
-
-	var query struct {
-		Node struct {
-			PullRequest struct {
-				ViewerMergeHeadlineText string `graphql:"viewerMergeHeadlineText(mergeType: $method)"`
-				ViewerMergeBodyText     string `graphql:"viewerMergeBodyText(mergeType: $method)"`
-			} `graphql:"...on PullRequest"`
-		} `graphql:"node(id: $prID)"`
-	}
-
-	variables := map[string]any{
-		"prID":   githubv4.ID(prID),
-		"method": method,
-	}
-
-	gql := api.NewClientFromHTTP(client)
-	err := gql.Query(repo.RepoHost(), "PullRequestMergeText", &query, variables)
-	if err != nil {
-		// Tolerate this API missing in older GitHub Enterprise
-		if strings.Contains(err.Error(), "Field 'viewerMergeHeadlineText' doesn't exist") ||
-			strings.Contains(err.Error(), "Field 'viewerMergeBodyText' doesn't exist") {
-			return "", "", nil
+		subject := fmt.Sprintf("%s (#%d)", payload.prTitle, payload.pullRequestNumber)
+		apiClient := api.NewClientFromHTTP(client)
+		commits, err := api.FetchPRCommitsREST(apiClient, payload.repo, payload.pullRequestNumber)
+		if err != nil {
+			return subject, payload.prBody, nil
 		}
-		return "", "", err
+		var lines []string
+		for _, c := range commits {
+			if c.Commit.MessageHeadline != "" {
+				lines = append(lines, "* "+c.Commit.MessageHeadline)
+			}
+		}
+		if len(lines) > 0 {
+			return subject, strings.Join(lines, "\n"), nil
+		}
+		return subject, payload.prBody, nil
+	default:
+		return "", "", nil
 	}
-
-	return query.Node.PullRequest.ViewerMergeHeadlineText, query.Node.PullRequest.ViewerMergeBodyText, nil
 }

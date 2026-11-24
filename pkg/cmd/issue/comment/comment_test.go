@@ -959,13 +959,9 @@ func testConfig() func() (gh.Config, error) {
 
 func mockCommentCreate(t *testing.T, reg *httpmock.Registry) {
 	reg.Register(
-		httpmock.GraphQL(`mutation CommentCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "addComment": { "commentEdge": { "node": {
-			"url": "https://github.com/OWNER/REPO/issues/123#issuecomment-456"
-		} } } } }`,
+		httpmock.REST("POST", "repos/OWNER/REPO/issues/123/comments"),
+		httpmock.RESTPayload(201, `{"html_url": "https://github.com/OWNER/REPO/issues/123#issuecomment-456"}`,
 			func(inputs map[string]any) {
-				assert.Equal(t, "ISSUE-ID", inputs["subjectId"])
 				assert.Equal(t, "comment body", inputs["body"])
 			}),
 	)
@@ -973,13 +969,9 @@ func mockCommentCreate(t *testing.T, reg *httpmock.Registry) {
 
 func mockCommentUpdate(t *testing.T, reg *httpmock.Registry) {
 	reg.Register(
-		httpmock.GraphQL(`mutation CommentUpdate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "updateIssueComment": { "issueComment": {
-			"url": "https://github.com/OWNER/REPO/issues/123#issuecomment-111"
-		} } } }`,
+		httpmock.REST("PATCH", "repos/OWNER/REPO/issues/comments/111"),
+		httpmock.RESTPayload(200, `{"html_url": "https://github.com/OWNER/REPO/issues/123#issuecomment-111"}`,
 			func(inputs map[string]any) {
-				assert.Equal(t, "id1", inputs["id"])
 				assert.Equal(t, "comment body", inputs["body"])
 			}),
 	)
@@ -987,12 +979,7 @@ func mockCommentUpdate(t *testing.T, reg *httpmock.Registry) {
 
 func mockCommentDelete(t *testing.T, reg *httpmock.Registry) {
 	reg.Register(
-		httpmock.GraphQL(`mutation CommentDelete\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "deleteIssueComment": {} } }`,
-			func(inputs map[string]any) {
-				assert.Equal(t, "id1", inputs["id"])
-			},
-		),
+		httpmock.REST("DELETE", "repos/OWNER/REPO/issues/comments/111"),
+		httpmock.StatusStringResponse(204, `{}`),
 	)
 }

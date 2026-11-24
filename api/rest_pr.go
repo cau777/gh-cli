@@ -409,6 +409,7 @@ func FetchIssueCommentsREST(client *Client, repo ghrepo.Interface, number int) (
 		}
 		comments = append(comments, Comment{
 			ID:                  id,
+			DatabaseID:          c.ID,
 			Author:              author,
 			AuthorAssociation:   c.AuthorAssociation,
 			Body:                c.Body,

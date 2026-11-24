@@ -102,6 +102,7 @@ func Test_updateBranchRun(t *testing.T) {
 			Finder: shared.NewMockFinder("123", &api.PullRequest{
 				ID:                  "123",
 				Number:              123,
+				BaseRefName:         "base-ref-name",
 				HeadRefOid:          "head-ref-oid",
 				HeadRefName:         "head-ref-name",
 				HeadRepositoryOwner: api.Owner{Login: "head-repository-owner"},
@@ -133,25 +134,8 @@ func Test_updateBranchRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"pullRequest": {
-									"baseRef": {
-										"compare": {
-											"aheadBy": 999,
-											"behindBy": 0,
-											"Status": "AHEAD"
-										}
-									}
-								}
-							}
-						}
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-repository-owner:head-ref-name", inputs["headRef"])
-					}))
+					httpmock.REST("GET", "repos/OWNER/REPO/compare/base-ref-name...head-repository-owner:head-ref-name"),
+					httpmock.StringResponse(`{"ahead_by": 999, "behind_by": 0, "status": "ahead"}`))
 			},
 			stdout: "✓ PR branch already up-to-date\n",
 		},
@@ -162,6 +146,7 @@ func Test_updateBranchRun(t *testing.T) {
 				Finder: shared.NewMockFinder("123", &api.PullRequest{
 					ID:                  "123",
 					Number:              123,
+					BaseRefName:         "base-ref-name",
 					HeadRefOid:          "head-ref-oid",
 					HeadRefName:         "head-ref-name",
 					HeadRepositoryOwner: api.Owner{Login: "OWNER"},
@@ -170,25 +155,8 @@ func Test_updateBranchRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"pullRequest": {
-									"baseRef": {
-										"compare": {
-											"aheadBy": 999,
-											"behindBy": 0,
-											"Status": "AHEAD"
-										}
-									}
-								}
-							}
-						}
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-ref-name", inputs["headRef"])
-					}))
+					httpmock.REST("GET", "repos/OWNER/REPO/compare/base-ref-name...head-ref-name"),
+					httpmock.StringResponse(`{"ahead_by": 999, "behind_by": 0, "status": "ahead"}`))
 			},
 			stdout: "✓ PR branch already up-to-date\n",
 		},
@@ -199,6 +167,7 @@ func Test_updateBranchRun(t *testing.T) {
 				Finder: shared.NewMockFinder("123", &api.PullRequest{
 					ID:                  "123",
 					Number:              123,
+					BaseRefName:         "base-ref-name",
 					HeadRefOid:          "head-ref-oid",
 					HeadRefName:         "head-ref-name",
 					HeadRepositoryOwner: api.Owner{Login: "OWNER"},
@@ -215,83 +184,23 @@ func Test_updateBranchRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"pullRequest": {
-									"baseRef": {
-										"compare": {
-											"aheadBy": 0,
-											"behindBy": 999,
-											"Status": "BEHIND"
-										}
-									}
-								}
-							}
-						}
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-repository-owner:head-ref-name", inputs["headRef"])
-					}))
+					httpmock.REST("GET", "repos/OWNER/REPO/compare/base-ref-name...head-repository-owner:head-ref-name"),
+					httpmock.StringResponse(`{"ahead_by": 0, "behind_by": 999, "status": "behind"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestUpdateBranch\b`),
-					httpmock.GraphQLMutation(`{
-						"data": {
-							"updatePullRequestBranch": {
-								"pullRequest": {}
-							}
-						}
-					}`, func(inputs map[string]any) {
-						assert.Equal(t, "123", inputs["pullRequestId"])
-						assert.Equal(t, "head-ref-oid", inputs["expectedHeadOid"])
-						assert.Equal(t, "MERGE", inputs["updateMethod"])
+					httpmock.REST("PUT", "repos/OWNER/REPO/pulls/123/update-branch"),
+					httpmock.RESTPayload(202, `{}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{"expected_head_sha": "head-ref-oid"}, payload)
 					}))
 			},
 			stdout: "✓ PR branch updated\n",
 		},
 		{
-			name: "success, rebase",
+			name: "failure, rebase not supported",
 			input: &UpdateBranchOptions{
 				SelectorArg: "123",
 				Rebase:      true,
 			},
-			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"pullRequest": {
-									"baseRef": {
-										"compare": {
-											"aheadBy": 0,
-											"behindBy": 999,
-											"Status": "BEHIND"
-										}
-									}
-								}
-							}
-						}
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-repository-owner:head-ref-name", inputs["headRef"])
-					}))
-				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestUpdateBranch\b`),
-					httpmock.GraphQLMutation(`{
-						"data": {
-							"updatePullRequestBranch": {
-								"pullRequest": {}
-							}
-						}
-					}`, func(inputs map[string]any) {
-						assert.Equal(t, "123", inputs["pullRequestId"])
-						assert.Equal(t, "head-ref-oid", inputs["expectedHeadOid"])
-						assert.Equal(t, "REBASE", inputs["updateMethod"])
-					}))
-			},
-			stdout: "✓ PR branch updated\n",
+			wantsErr: "not all features are supported: rebasing a pull request branch (--rebase) is not supported with REST",
 		},
 		{
 			name: "failure, API error on ref comparison request",
@@ -300,20 +209,10 @@ func Test_updateBranchRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {},
-						"errors": [
-							{
-								"message": "some error"
-							}
-						]
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-repository-owner:head-ref-name", inputs["headRef"])
-					}))
+					httpmock.REST("GET", "repos/OWNER/REPO/compare/base-ref-name...head-repository-owner:head-ref-name"),
+					httpmock.StatusJSONResponse(500, struct{ Message string }{Message: "some error"}))
 			},
-			wantsErr: "GraphQL: some error",
+			wantsErr: "HTTP 500: some error (https://api.github.com/repos/OWNER/REPO/compare/base-ref-name...head-repository-owner:head-ref-name)",
 		},
 		{
 			name: "failure, merge conflict error on update request",
@@ -322,39 +221,11 @@ func Test_updateBranchRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"pullRequest": {
-									"baseRef": {
-										"compare": {
-											"aheadBy": 999,
-											"behindBy": 999,
-											"Status": "BEHIND"
-										}
-									}
-								}
-							}
-						}
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-repository-owner:head-ref-name", inputs["headRef"])
-					}))
+					httpmock.REST("GET", "repos/OWNER/REPO/compare/base-ref-name...head-repository-owner:head-ref-name"),
+					httpmock.StringResponse(`{"ahead_by": 999, "behind_by": 999, "status": "behind"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestUpdateBranch\b`),
-					httpmock.GraphQLMutation(`{
-						"data": {},
-						"errors": [
-							{
-								"message": "merge conflict between base and head (updatePullRequestBranch)"
-							}
-						]
-					}`, func(inputs map[string]any) {
-						assert.Equal(t, "123", inputs["pullRequestId"])
-						assert.Equal(t, "head-ref-oid", inputs["expectedHeadOid"])
-						assert.Equal(t, "MERGE", inputs["updateMethod"])
-					}))
+					httpmock.REST("PUT", "repos/OWNER/REPO/pulls/123/update-branch"),
+					httpmock.StatusJSONResponse(422, struct{ Message string }{Message: "merge conflict between base and head"}))
 			},
 			stderr:   "X Cannot update PR branch due to conflicts\n",
 			wantsErr: cmdutil.SilentError.Error(),
@@ -366,41 +237,13 @@ func Test_updateBranchRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query ComparePullRequestBaseBranchWith\b`),
-					httpmock.GraphQLQuery(`{
-						"data": {
-							"repository": {
-								"pullRequest": {
-									"baseRef": {
-										"compare": {
-											"aheadBy": 0,
-											"behindBy": 999,
-											"Status": "BEHIND"
-										}
-									}
-								}
-							}
-						}
-					}`, func(_ string, inputs map[string]any) {
-						assert.Equal(t, float64(123), inputs["pullRequestNumber"])
-						assert.Equal(t, "head-repository-owner:head-ref-name", inputs["headRef"])
-					}))
+					httpmock.REST("GET", "repos/OWNER/REPO/compare/base-ref-name...head-repository-owner:head-ref-name"),
+					httpmock.StringResponse(`{"ahead_by": 0, "behind_by": 999, "status": "behind"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation PullRequestUpdateBranch\b`),
-					httpmock.GraphQLMutation(`{
-						"data": {},
-						"errors": [
-							{
-								"message": "some error"
-							}
-						]
-					}`, func(inputs map[string]any) {
-						assert.Equal(t, "123", inputs["pullRequestId"])
-						assert.Equal(t, "head-ref-oid", inputs["expectedHeadOid"])
-						assert.Equal(t, "MERGE", inputs["updateMethod"])
-					}))
+					httpmock.REST("PUT", "repos/OWNER/REPO/pulls/123/update-branch"),
+					httpmock.StatusJSONResponse(500, struct{ Message string }{Message: "some error"}))
 			},
-			wantsErr: "GraphQL: some error",
+			wantsErr: "HTTP 500: some error (https://api.github.com/repos/OWNER/REPO/pulls/123/update-branch)",
 		},
 	}
 	for _, tt := range tests {

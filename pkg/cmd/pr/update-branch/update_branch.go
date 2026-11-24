@@ -1,6 +1,7 @@
 package update_branch
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	shared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -77,9 +77,13 @@ func NewCmdUpdateBranch(f *cmdutil.Factory, runF func(*UpdateBranchOptions) erro
 }
 
 func updateBranchRun(opts *UpdateBranchOptions) error {
+	if opts.Rebase {
+		return api.NotSupportedError("rebasing a pull request branch (--rebase) is not supported with REST")
+	}
+
 	findOptions := shared.FindOptions{
 		Selector: opts.SelectorArg,
-		Fields:   []string{"id", "number", "headRefName", "headRefOid", "headRepositoryOwner", "mergeable"},
+		Fields:   []string{"id", "number", "baseRefName", "headRefName", "headRefOid", "headRepositoryOwner", "mergeable"},
 	}
 
 	pr, repo, err := opts.Finder.Find(findOptions)
@@ -107,7 +111,7 @@ func updateBranchRun(opts *UpdateBranchOptions) error {
 	}
 
 	opts.IO.StartProgressIndicator()
-	comparison, err := api.ComparePullRequestBaseBranchWith(apiClient, repo, pr.Number, headRef)
+	comparison, err := api.ComparePullRequestBaseBranchWith(apiClient, repo, pr.BaseRefName, headRef)
 	opts.IO.StopProgressIndicator()
 	if err != nil {
 		return err
@@ -120,11 +124,12 @@ func updateBranchRun(opts *UpdateBranchOptions) error {
 	}
 
 	opts.IO.StartProgressIndicator()
-	err = updatePullRequestBranch(apiClient, repo, pr.ID, pr.HeadRefOid, opts.Rebase)
+	err = updatePullRequestBranch(apiClient, repo, pr.Number, pr.HeadRefOid)
 	opts.IO.StopProgressIndicator()
 	if err != nil {
-		// TODO: this is a best effort approach and not a resilient way of handling API errors.
-		if strings.Contains(err.Error(), "GraphQL: merge conflict between base and head (updatePullRequestBranch)") {
+		var httpErr api.HTTPError
+		if (errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusUnprocessableEntity && strings.Contains(strings.ToLower(httpErr.Message), "merge conflict")) ||
+			strings.Contains(strings.ToLower(err.Error()), "merge conflict") {
 			fmt.Fprintf(opts.IO.ErrOut, "%s Cannot update PR branch due to conflicts\n", cs.FailureIcon())
 			return cmdutil.SilentError
 		}
@@ -135,19 +140,8 @@ func updateBranchRun(opts *UpdateBranchOptions) error {
 	return nil
 }
 
-// updatePullRequestBranch calls the GraphQL API endpoint to update the given PR
+// updatePullRequestBranch calls the REST API endpoint to update the given PR
 // branch with latest changes of its base.
-func updatePullRequestBranch(apiClient *api.Client, repo ghrepo.Interface, pullRequestID string, expectedHeadOid string, rebase bool) error {
-	updateMethod := githubv4.PullRequestBranchUpdateMethodMerge
-	if rebase {
-		updateMethod = githubv4.PullRequestBranchUpdateMethodRebase
-	}
-
-	params := githubv4.UpdatePullRequestBranchInput{
-		PullRequestID:   pullRequestID,
-		ExpectedHeadOid: (*githubv4.GitObjectID)(&expectedHeadOid),
-		UpdateMethod:    &updateMethod,
-	}
-
-	return api.UpdatePullRequestBranch(apiClient, repo, params)
+func updatePullRequestBranch(apiClient *api.Client, repo ghrepo.Interface, prNumber int, expectedHeadOid string) error {
+	return api.UpdatePullRequestBranch(apiClient, repo, prNumber, expectedHeadOid)
 }

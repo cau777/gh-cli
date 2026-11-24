@@ -476,33 +476,6 @@ func Test_createRun(t *testing.T) {
 					httpmock.StringResponse(`[
 						{ "name": "Triage", "node_id": "TRIAGEID", "html_url": "https://github.com/orgs/ORG/projects/1" }
 					]`))
-				r.Register(
-					httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "projectsV2": {
-						"nodes": [
-							{ "title": "CleanupV2", "id": "CLEANUPV2ID", "resourcePath": "/OWNER/REPO/projects/2" }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }`))
-				r.Register(
-					httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-					httpmock.StringResponse(`
-					{ "data": { "organization": { "projectsV2": {
-						"nodes": [
-							{ "title": "Triage", "id": "TRIAGEID", "resourcePath": "/orgs/ORG/projects/2"  }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }`))
-				r.Register(
-					httpmock.GraphQL(`query UserProjectV2List\b`),
-					httpmock.StringResponse(`
-					{ "data": { "viewer": { "projectsV2": {
-						"nodes": [
-							{ "title": "Monalisa", "id": "MONALISAID", "resourcePath": "/users/MONALISA/projects/1"  }
-						],
-						"pageInfo": { "hasNextPage": false }
-					} } } }`))
 			},
 			wantsBrowse: "https://github.com/OWNER/REPO/issues/new?body=&projects=OWNER%2FREPO%2F1",
 			wantsStderr: "Opening https://github.com/OWNER/REPO/issues/new in your browser.\n",
@@ -515,15 +488,17 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query IssueTemplates\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTemplates": [
-						{ "name": "Bug report",
-							"body": "Does not work :((" },
-						{ "name": "Submit a request",
-							"body": "I have a suggestion for an enhancement" }
-					] } } }`),
-				)
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{ "name": "bug_report.md", "path": ".github/ISSUE_TEMPLATE/bug_report.md", "type": "file" },
+						{ "name": "feature.md", "path": ".github/ISSUE_TEMPLATE/feature.md", "type": "file" }
+					]`))
+				r.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug_report.md"),
+					httpmock.StringResponse(`{"content": "---\nname: Bug report\n---\nDoes not work :(("}`))
+				r.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/feature.md"),
+					httpmock.StringResponse(`{"content": "---\nname: Submit a request\n---\nI have a suggestion for an enhancement"}`))
 			},
 			wantsBrowse: "https://github.com/OWNER/REPO/issues/new/choose",
 			wantsStderr: "Opening https://github.com/OWNER/REPO/issues/new/choose in your browser.\n",
@@ -610,14 +585,13 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true
 					}`))
 				r.Register(
-					httpmock.GraphQL(`query IssueTemplates\b`),
-					httpmock.StringResponse(`
-			{ "data": { "repository": { "issueTemplates": [
-				{ "name": "Bug report",
-				  "title": "bug: ",
-				  "body": "Does not work :((" }
-			] } } }`),
-				)
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{ "name": "bug_report.md", "path": ".github/ISSUE_TEMPLATE/bug_report.md", "type": "file" }
+					]`))
+				r.Register(
+					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug_report.md"),
+					httpmock.StringResponse(`{"content": "---\nname: Bug report\ntitle: \"bug: \"\n---\nDoes not work :(("}`))
 				r.Register(
 					httpmock.GraphQL(`mutation IssueCreate\b`),
 					httpmock.GraphQLMutation(`
@@ -1615,15 +1589,17 @@ func TestIssueCreate_nonLegacyTemplate(t *testing.T) {
 		}`),
 	)
 	http.Register(
-		httpmock.GraphQL(`query IssueTemplates\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": { "issueTemplates": [
-				{ "name": "Bug report",
-				  "body": "Does not work :((" },
-				{ "name": "Submit a request",
-				  "body": "I have a suggestion for an enhancement" }
-			] } } }`),
-	)
+		httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+		httpmock.StringResponse(`[
+			{ "name": "bug_report.md", "path": ".github/ISSUE_TEMPLATE/bug_report.md", "type": "file" },
+			{ "name": "feature.md", "path": ".github/ISSUE_TEMPLATE/feature.md", "type": "file" }
+		]`))
+	http.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug_report.md"),
+		httpmock.StringResponse(`{"content": "---\nname: Bug report\n---\nDoes not work :(("}`))
+	http.Register(
+		httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/feature.md"),
+		httpmock.StringResponse(`{"content": "---\nname: Submit a request\n---\nI have a suggestion for an enhancement"}`))
 	http.Register(
 		httpmock.GraphQL(`mutation IssueCreate\b`),
 		httpmock.GraphQLMutation(`
@@ -1737,30 +1713,6 @@ func TestIssueCreate_metadata(t *testing.T) {
 	http.Register(
 		httpmock.REST("GET", "orgs/OWNER/projects"),
 		httpmock.StatusStringResponse(404, ""))
-	http.Register(
-		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
-		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-		httpmock.StringResponse(`
-		{	"data": { "organization": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
-		httpmock.GraphQL(`query UserProjectV2List\b`),
-		httpmock.StringResponse(`
-		{	"data": { "viewer": { "projectsV2": {
-			"nodes": [],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
 	http.Register(
 		httpmock.GraphQL(`mutation IssueCreate\b`),
 		httpmock.GraphQLMutation(`
@@ -1913,71 +1865,9 @@ func TestIssueCreate_projectsV2(t *testing.T) {
 	http.Register(
 		httpmock.REST("GET", "orgs/OWNER/projects"),
 		httpmock.StringResponse(`[]`))
-	http.Register(
-		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [
-				{ "title": "CleanupV2", "id": "CLEANUPV2ID" },
-				{ "title": "RoadmapV2", "id": "ROADMAPV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
-		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [
-				{ "title": "TriageV2", "id": "TRIAGEV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
-		httpmock.GraphQL(`query UserProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [
-				{ "title": "MonalisaV2", "id": "MONALISAV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "createIssue": { "issue": {
-			"id": "Issue#1",
-			"URL": "https://github.com/OWNER/REPO/issues/12"
-		} } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "TITLE", inputs["title"])
-			assert.Equal(t, "BODY", inputs["body"])
-			assert.Nil(t, inputs["projectIds"])
-			assert.NotContains(t, inputs, "projectV2Ids")
-		}))
-	http.Register(
-		httpmock.GraphQL(`mutation UpdateProjectV2Items\b`),
-		httpmock.GraphQLQuery(`
-			{ "data": { "add_000": { "item": {
-				"id": "1"
-			} } } }
-	`, func(mutations string, inputs map[string]any) {
-			variables, err := json.Marshal(inputs)
-			assert.NoError(t, err)
-			expectedMutations := "mutation UpdateProjectV2Items($input_000: AddProjectV2ItemByIdInput!) {add_000: addProjectV2ItemById(input: $input_000) { item { id } }}"
-			expectedVariables := `{"input_000":{"contentId":"Issue#1","projectId":"ROADMAPV2ID"}}`
-			assert.Equal(t, expectedMutations, mutations)
-			assert.Equal(t, expectedVariables, string(variables))
-		}))
 
-	output, err := runCommand(http, true, `-t TITLE -b BODY -p roadmapv2`, nil)
-	if err != nil {
-		t.Errorf("error running command `issue create`: %v", err)
-	}
-
-	assert.Equal(t, "https://github.com/OWNER/REPO/issues/12\n", output.String())
+	_, err := runCommand(http, true, `-t TITLE -b BODY -p roadmapv2`, nil)
+	assert.EqualError(t, err, "could not add to project: 'roadmapv2' not found")
 }
 
 // TODO projectsV1Deprecation

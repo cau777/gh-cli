@@ -1,8 +1,12 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -488,125 +492,93 @@ func parseCheckStatusFromCheckConclusionState(state CheckConclusionState) checkS
 
 // CreatePullRequest creates a pull request in a GitHub repository
 func CreatePullRequest(client *Client, repo *Repository, params map[string]any) (*PullRequest, error) {
-	query := `
-		mutation PullRequestCreate($input: CreatePullRequestInput!) {
-			createPullRequest(input: $input) {
-				pullRequest {
-					id
-					url
-				}
+	if ids, ok := params["projectIds"].([]string); ok && len(ids) > 0 {
+		return nil, NotSupportedError("adding a pull request to projects is not supported with REST")
+	}
+	if ids, ok := params["projectV2Ids"].([]string); ok && len(ids) > 0 {
+		return nil, NotSupportedError("adding a pull request to projects is not supported with REST")
+	}
+	if bots, ok := params["botReviewerLogins"].([]string); ok && len(bots) > 0 {
+		return nil, NotSupportedError("requesting bot reviewers is not supported with REST")
+	}
+	if logins, ok := params["assigneeLogins"].([]string); ok {
+		for _, login := range logins {
+			if login == CopilotAssigneeLogin {
+				return nil, NotSupportedError("assigning Copilot is not supported with REST")
 			}
-	}`
-
-	inputParams := map[string]any{
-		"repositoryId": repo.ID,
-	}
-	for key, val := range params {
-		switch key {
-		case "title", "body", "draft", "baseRefName", "headRefName", "maintainerCanModify":
-			inputParams[key] = val
 		}
 	}
-	variables := map[string]any{
-		"input": inputParams,
+
+	reqBody := struct {
+		Title               any `json:"title,omitempty"`
+		Body                any `json:"body,omitempty"`
+		Head                any `json:"head"`
+		Base                any `json:"base"`
+		Draft               any `json:"draft,omitempty"`
+		MaintainerCanModify any `json:"maintainer_can_modify,omitempty"`
+	}{
+		Title:               params["title"],
+		Body:                params["body"],
+		Head:                params["headRefName"],
+		Base:                params["baseRefName"],
+		Draft:               params["draft"],
+		MaintainerCanModify: params["maintainerCanModify"],
 	}
 
-	result := struct {
-		CreatePullRequest struct {
-			PullRequest PullRequest
-		}
-	}{}
-
-	err := client.GraphQL(repo.RepoHost(), query, variables, &result)
+	payload, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
 	}
-	pr := &result.CreatePullRequest.PullRequest
 
-	// metadata parameters aren't currently available in `createPullRequest`,
-	// but they are in `updatePullRequest`
-	updateParams := make(map[string]any)
-	for key, val := range params {
-		switch key {
-		case "assigneeIds", "labelIds", "projectIds", "milestoneId":
-			if !isBlank(val) {
-				updateParams[key] = val
-			}
-		}
+	createPath, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "pulls")
+	if err != nil {
+		return nil, err
 	}
-	if len(updateParams) > 0 {
-		updateQuery := `
-		mutation PullRequestCreateMetadata($input: UpdatePullRequestInput!) {
-			updatePullRequest(input: $input) { clientMutationId }
-		}`
-		updateParams["pullRequestId"] = pr.ID
-		variables := map[string]any{
-			"input": updateParams,
-		}
-		err := client.GraphQL(repo.RepoHost(), updateQuery, variables, &result)
+
+	var created struct {
+		NodeID  string `json:"node_id"`
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := client.REST(repo.RepoHost(), http.MethodPost, createPath.String(), bytes.NewReader(payload), &created); err != nil {
+		return nil, err
+	}
+
+	pr := &PullRequest{
+		ID:     created.NodeID,
+		Number: created.Number,
+		URL:    created.HTMLURL,
+	}
+
+	issuePatch := make(map[string]any)
+	if logins, ok := params["assigneeLogins"].([]string); ok && len(logins) > 0 {
+		issuePatch["assignees"] = logins
+	}
+	if labels, ok := params["labelNames"].([]string); ok && len(labels) > 0 {
+		issuePatch["labels"] = labels
+	}
+	if milestoneNum, ok := params["milestoneNumber"].(int); ok && milestoneNum > 0 {
+		issuePatch["milestone"] = milestoneNum
+	}
+
+	if len(issuePatch) > 0 {
+		patchPayload, err := json.Marshal(issuePatch)
 		if err != nil {
+			return pr, err
+		}
+		issuePath, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(pr.Number))
+		if err != nil {
+			return pr, err
+		}
+		if err := client.REST(repo.RepoHost(), http.MethodPatch, issuePath.String(), bytes.NewReader(patchPayload), nil); err != nil {
 			return pr, err
 		}
 	}
 
-	// Assign users using login-based mutation when ApiActorsSupported is true (github.com).
-	if assigneeLogins, ok := params["assigneeLogins"].([]string); ok && len(assigneeLogins) > 0 {
-		err := ReplaceActorsForAssignableByLogin(client, repo, pr.ID, assigneeLogins)
-		if err != nil {
-			return pr, err
-		}
-	}
-
-	// TODO ApiActorsSupported
-	// Request reviewers using either login-based (github.com) or ID-based (GHES) mutation.
-	// The ID-based path can be removed once GHES supports requestReviewsByLogin.
-	userLogins, hasUserLogins := params["userReviewerLogins"].([]string)
-	botLogins, hasBotLogins := params["botReviewerLogins"].([]string)
-	teamSlugs, hasTeamSlugs := params["teamReviewerSlugs"].([]string)
-
-	if hasUserLogins || hasBotLogins || hasTeamSlugs {
-		// Use login-based mutation (RequestReviewsByLogin) for github.com
-		err := RequestReviewsByLogin(client, repo, pr.ID, userLogins, botLogins, teamSlugs, true)
-		if err != nil {
-			return pr, err
-		}
-	} else {
-		// Use ID-based mutation (requestReviews) for GHES compatibility
-		reviewParams := make(map[string]any)
-		if ids, ok := params["userReviewerIds"]; ok && !isBlank(ids) {
-			reviewParams["userIds"] = ids
-		}
-		if ids, ok := params["teamReviewerIds"]; ok && !isBlank(ids) {
-			reviewParams["teamIds"] = ids
-		}
-
-		//TODO: How much work to extract this into own method and use for create and edit?
-		if len(reviewParams) > 0 {
-			reviewQuery := `
-		mutation PullRequestCreateRequestReviews($input: RequestReviewsInput!) {
-			requestReviews(input: $input) { clientMutationId }
-		}`
-			reviewParams["pullRequestId"] = pr.ID
-			reviewParams["union"] = true
-			variables := map[string]any{
-				"input": reviewParams,
-			}
-			err := client.GraphQL(repo.RepoHost(), reviewQuery, variables, &result)
-			if err != nil {
-				return pr, err
-			}
-		}
-	}
-
-	// projectsV2 are added in yet another mutation
-	projectV2Ids, ok := params["projectV2Ids"].([]string)
-	if ok {
-		projectItems := make(map[string]string, len(projectV2Ids))
-		for _, p := range projectV2Ids {
-			projectItems[p] = pr.ID
-		}
-		err = UpdateProjectV2Items(client, repo, projectItems, nil)
-		if err != nil {
+	userLogins, _ := params["userReviewerLogins"].([]string)
+	teamSlugs, _ := params["teamReviewerSlugs"].([]string)
+	if len(userLogins) > 0 || len(teamSlugs) > 0 {
+		if err := AddPullRequestReviews(client, repo, pr.Number, userLogins, teamSlugs); err != nil {
 			return pr, err
 		}
 	}
@@ -741,132 +713,65 @@ func SuggestedAssignableActors(client *Client, repo ghrepo.Interface, assignable
 	return actors, availableAssigneesCount, nil
 }
 
-func UpdatePullRequestBranch(client *Client, repo ghrepo.Interface, params githubv4.UpdatePullRequestBranchInput) error {
-	var mutation struct {
-		UpdatePullRequestBranch struct {
-			PullRequest struct {
-				ID string
-			}
-		} `graphql:"updatePullRequestBranch(input: $input)"`
+// UpdatePullRequestBranch updates a pull request branch by merging its base
+// branch using the REST API.
+func UpdatePullRequestBranch(client *Client, repo ghrepo.Interface, prNumber int, expectedHeadOid string) error {
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "pulls", strconv.Itoa(prNumber), "update-branch")
+	if err != nil {
+		return err
 	}
-	variables := map[string]any{"input": params}
-	return client.Mutate(repo.RepoHost(), "PullRequestUpdateBranch", &mutation, variables)
+
+	body := struct {
+		ExpectedHeadSHA string `json:"expected_head_sha,omitempty"`
+	}{
+		ExpectedHeadSHA: expectedHeadOid,
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	return client.REST(repo.RepoHost(), http.MethodPut, path.String(), bytes.NewReader(payload), nil)
 }
 
-func isBlank(v any) bool {
-	switch vv := v.(type) {
-	case string:
-		return vv == ""
-	case []string:
-		return len(vv) == 0
-	default:
-		return true
-	}
-}
-
-func PullRequestClose(httpClient *http.Client, repo ghrepo.Interface, prID string) error {
-	var mutation struct {
-		ClosePullRequest struct {
-			PullRequest struct {
-				ID githubv4.ID
-			}
-		} `graphql:"closePullRequest(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.ClosePullRequestInput{
-			PullRequestID: prID,
-		},
+func PullRequestClose(httpClient *http.Client, repo ghrepo.Interface, prNumber int) error {
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "pulls", strconv.Itoa(prNumber))
+	if err != nil {
+		return err
 	}
 
 	client := NewClientFromHTTP(httpClient)
-	return client.Mutate(repo.RepoHost(), "PullRequestClose", &mutation, variables)
+	return client.REST(repo.RepoHost(), http.MethodPatch, path.String(), bytes.NewBufferString(`{"state":"closed"}`), nil)
 }
 
-func PullRequestReopen(httpClient *http.Client, repo ghrepo.Interface, prID string) error {
-	var mutation struct {
-		ReopenPullRequest struct {
-			PullRequest struct {
-				ID githubv4.ID
-			}
-		} `graphql:"reopenPullRequest(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.ReopenPullRequestInput{
-			PullRequestID: prID,
-		},
+func PullRequestReopen(httpClient *http.Client, repo ghrepo.Interface, prNumber int) error {
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "pulls", strconv.Itoa(prNumber))
+	if err != nil {
+		return err
 	}
 
 	client := NewClientFromHTTP(httpClient)
-	return client.Mutate(repo.RepoHost(), "PullRequestReopen", &mutation, variables)
+	return client.REST(repo.RepoHost(), http.MethodPatch, path.String(), bytes.NewBufferString(`{"state":"open"}`), nil)
 }
 
 func PullRequestReady(client *Client, repo ghrepo.Interface, pr *PullRequest) error {
-	var mutation struct {
-		MarkPullRequestReadyForReview struct {
-			PullRequest struct {
-				ID githubv4.ID
-			}
-		} `graphql:"markPullRequestReadyForReview(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.MarkPullRequestReadyForReviewInput{
-			PullRequestID: pr.ID,
-		},
-	}
-
-	return client.Mutate(repo.RepoHost(), "PullRequestReadyForReview", &mutation, variables)
+	return NotSupportedError("marking a pull request ready for review is not supported with REST")
 }
 
-func PullRequestRevert(client *Client, repo ghrepo.Interface, params githubv4.RevertPullRequestInput) (*PullRequest, error) {
-	var mutation struct {
-		RevertPullRequest struct {
-			PullRequest struct {
-				ID githubv4.ID
-			}
-			RevertPullRequest struct {
-				ID     string
-				Number int
-				URL    string
-			}
-		} `graphql:"revertPullRequest(input: $input)"`
-	}
+// PullRequestRevertInput captures parameters for reverting a pull request.
+type PullRequestRevertInput struct {
+	PullRequestID string
+	Draft         bool
+	Body          *string
+	Title         *string
+}
 
-	variables := map[string]any{
-		"input": params,
-	}
-	err := client.Mutate(repo.RepoHost(), "PullRequestRevert", &mutation, variables)
-	if err != nil {
-		return nil, err
-	}
-	pr := &mutation.RevertPullRequest.RevertPullRequest
-	revertPR := &PullRequest{
-		ID:     pr.ID,
-		Number: pr.Number,
-		URL:    pr.URL,
-	}
-
-	return revertPR, nil
+func PullRequestRevert(client *Client, repo ghrepo.Interface, params PullRequestRevertInput) (*PullRequest, error) {
+	return nil, NotSupportedError("reverting a pull request is not supported with REST")
 }
 
 func ConvertPullRequestToDraft(client *Client, repo ghrepo.Interface, pr *PullRequest) error {
-	var mutation struct {
-		ConvertPullRequestToDraft struct {
-			PullRequest struct {
-				ID githubv4.ID
-			}
-		} `graphql:"convertPullRequestToDraft(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.ConvertPullRequestToDraftInput{
-			PullRequestID: pr.ID,
-		},
-	}
-
-	return client.Mutate(repo.RepoHost(), "ConvertPullRequestToDraft", &mutation, variables)
+	return NotSupportedError("converting a pull request to draft is not supported with REST")
 }
 
 func BranchDeleteRemote(client *Client, repo ghrepo.Interface, branch string) error {
@@ -883,37 +788,29 @@ type RefComparison struct {
 	Status   string
 }
 
-func ComparePullRequestBaseBranchWith(client *Client, repo ghrepo.Interface, prNumber int, headRef string) (*RefComparison, error) {
-	query := `query ComparePullRequestBaseBranchWith($owner: String!, $repo: String!, $pullRequestNumber: Int!, $headRef: String!) {
-		repository(owner: $owner, name: $repo) {
-			pullRequest(number: $pullRequestNumber) {
-				baseRef {
-					compare (headRef: $headRef) {
-						aheadBy, behindBy, status
-					}
-				}
-			}
-		}
-	}`
-
-	var result struct {
-		Repository struct {
-			PullRequest struct {
-				BaseRef struct {
-					Compare RefComparison
-				}
-			}
-		}
-	}
-	variables := map[string]any{
-		"owner":             repo.RepoOwner(),
-		"repo":              repo.RepoName(),
-		"pullRequestNumber": prNumber,
-		"headRef":           headRef,
+// ComparePullRequestBaseBranchWith compares baseRef against headRef via REST.
+func ComparePullRequestBaseBranchWith(client *Client, repo ghrepo.Interface, baseRef, headRef string) (*RefComparison, error) {
+	if baseRef == "" {
+		return nil, errors.New("base branch ref is required for REST comparison")
 	}
 
-	if err := client.GraphQL(repo.RepoHost(), query, variables, &result); err != nil {
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "compare", fmt.Sprintf("%s...%s", baseRef, headRef))
+	if err != nil {
 		return nil, err
 	}
-	return &result.Repository.PullRequest.BaseRef.Compare, nil
+
+	var resp struct {
+		AheadBy  int    `json:"ahead_by"`
+		BehindBy int    `json:"behind_by"`
+		Status   string `json:"status"`
+	}
+	if err := client.REST(repo.RepoHost(), http.MethodGet, path.String(), nil, &resp); err != nil {
+		return nil, err
+	}
+
+	return &RefComparison{
+		AheadBy:  resp.AheadBy,
+		BehindBy: resp.BehindBy,
+		Status:   resp.Status,
+	}, nil
 }

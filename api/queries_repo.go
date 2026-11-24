@@ -687,6 +687,26 @@ func (m *RepoMetadataResult) LabelsToIDs(names []string) ([]string, error) {
 	return ids, nil
 }
 
+// LabelsToNames validates label names case-insensitively against repository
+// metadata and returns their canonical repository names.
+func (m *RepoMetadataResult) LabelsToNames(names []string) ([]string, error) {
+	var canonical []string
+	for _, labelName := range names {
+		found := false
+		for _, l := range m.Labels {
+			if strings.EqualFold(labelName, l.Name) {
+				canonical = append(canonical, l.Name)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("'%s' not found", labelName)
+		}
+	}
+	return canonical, nil
+}
+
 // ProjectsTitlesToIDs returns two arrays:
 // - the first contains IDs of projects V1
 // - the second contains IDs of projects V2
@@ -809,6 +829,17 @@ func (m *RepoMetadataResult) MilestoneToID(title string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("'%s' not found", title)
+}
+
+// MilestoneToNumber resolves a milestone title (case-insensitively) to its
+// numeric REST milestone number.
+func (m *RepoMetadataResult) MilestoneToNumber(title string) (int, error) {
+	for _, ms := range m.Milestones {
+		if strings.EqualFold(title, ms.Title) {
+			return ms.Number, nil
+		}
+	}
+	return 0, fmt.Errorf("'%s' not found", title)
 }
 
 func (m *RepoMetadataResult) Merge(m2 *RepoMetadataResult) {

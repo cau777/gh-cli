@@ -162,7 +162,11 @@ func (e Editable) AssigneeLogins(client *api.Client, repo ghrepo.Interface) ([]s
 		replacer := NewSpecialAssigneeReplacer(client, repo.RepoHost(), true, true)
 
 		assigneeSet := set.NewStringSet()
-		assigneeSet.AddValues(e.Assignees.DefaultLogins)
+		if len(e.Assignees.DefaultLogins) > 0 {
+			assigneeSet.AddValues(e.Assignees.DefaultLogins)
+		} else {
+			assigneeSet.AddValues(e.Assignees.Default)
+		}
 
 		add, err := replacer.ReplaceSlice(e.Assignees.Add)
 		if err != nil {

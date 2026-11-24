@@ -159,13 +159,9 @@ func TestCloseRun(t *testing.T) {
             } } }`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation CommentCreate\b`),
-					httpmock.GraphQLMutation(`
-            { "data": { "addComment": { "commentEdge": { "node": {
-              "url": "https://github.com/OWNER/REPO/issues/123#issuecomment-456"
-            } } } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/issues/13/comments"),
+					httpmock.RESTPayload(201, `{"html_url": "https://github.com/OWNER/REPO/issues/13#issuecomment-456"}`,
 						func(inputs map[string]any) {
-							assert.Equal(t, "THE-ID", inputs["subjectId"])
 							assert.Equal(t, "closing comment", inputs["body"])
 						}),
 				)

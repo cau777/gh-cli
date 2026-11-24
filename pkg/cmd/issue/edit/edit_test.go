@@ -600,8 +600,8 @@ func Test_editRun(t *testing.T) {
 				},
 				Projects: prShared.EditableProjects{
 					EditableSlice: prShared.EditableSlice{
-						Add:    []string{"Cleanup", "CleanupV2"},
-						Remove: []string{"Roadmap", "RoadmapV2"},
+						Add:    []string{"Cleanup"},
+						Remove: []string{"Roadmap"},
 						Edited: true,
 					},
 				},
@@ -618,12 +618,10 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
-				mockIssueProjectItemsGet(t, reg)
 				mockRepoMetadata(t, reg)
 				mockIssueUpdate(t, reg)
 				mockIssueUpdateApiActors(t, reg)
 				mockIssueUpdateLabels(t, reg)
-				mockProjectV2ItemUpdate(t, reg)
 			},
 			stdout: "https://github.com/OWNER/REPO/issue/123\n",
 		},
@@ -647,8 +645,8 @@ func Test_editRun(t *testing.T) {
 				},
 				Projects: prShared.EditableProjects{
 					EditableSlice: prShared.EditableSlice{
-						Add:    []string{"Cleanup", "CleanupV2"},
-						Remove: []string{"Roadmap", "RoadmapV2"},
+						Add:    []string{"Cleanup"},
+						Remove: []string{"Roadmap"},
 						Edited: true,
 					},
 				},
@@ -664,16 +662,12 @@ func Test_editRun(t *testing.T) {
 				// All other queries and mutations should be doubled.
 				mockIssueNumberGet(t, reg, 123)
 				mockIssueNumberGet(t, reg, 456)
-				mockIssueProjectItemsGet(t, reg)
-				mockIssueProjectItemsGet(t, reg)
 				mockIssueUpdate(t, reg)
 				mockIssueUpdate(t, reg)
 				mockIssueUpdateApiActors(t, reg)
 				mockIssueUpdateApiActors(t, reg)
 				mockIssueUpdateLabels(t, reg)
 				mockIssueUpdateLabels(t, reg)
-				mockProjectV2ItemUpdate(t, reg)
-				mockProjectV2ItemUpdate(t, reg)
 			},
 			stdout: heredoc.Doc(`
 				https://github.com/OWNER/REPO/issue/123
@@ -700,8 +694,8 @@ func Test_editRun(t *testing.T) {
 				},
 				Projects: prShared.EditableProjects{
 					EditableSlice: prShared.EditableSlice{
-						Add:    []string{"Cleanup", "CleanupV2"},
-						Remove: []string{"Roadmap", "RoadmapV2"},
+						Add:    []string{"Cleanup"},
+						Remove: []string{"Roadmap"},
 						Edited: true,
 					},
 				},
@@ -811,7 +805,7 @@ func Test_editRun(t *testing.T) {
 					eo.Labels.Value = []string{"feature", "TODO", "bug"}
 					eo.Labels.Add = []string{"feature", "TODO", "bug"}
 					eo.Labels.Remove = []string{"docs"}
-					eo.Projects.Value = []string{"Cleanup", "CleanupV2"}
+					eo.Projects.Value = []string{"Cleanup"}
 					eo.Milestone.Value = "GA"
 					return nil
 				},
@@ -820,12 +814,10 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				mockIssueGet(t, reg)
-				mockIssueProjectItemsGet(t, reg)
 				mockRepoMetadata(t, reg)
 				mockIssueUpdate(t, reg)
 				mockIssueUpdateApiActors(t, reg)
 				mockIssueUpdateLabels(t, reg)
-				mockProjectV2ItemUpdate(t, reg)
 			},
 			stdout: "https://github.com/OWNER/REPO/issue/123\n",
 		},
@@ -1888,20 +1880,6 @@ func mockIsssueNumberGetWithAssignedActors(_ *testing.T, reg *httpmock.Registry,
 	)
 }
 
-func mockIssueProjectItemsGet(_ *testing.T, reg *httpmock.Registry) {
-	reg.Register(
-		httpmock.GraphQL(`query IssueProjectItems\b`),
-		httpmock.StringResponse(`
-			{ "data": { "repository": { "issue": {
-				"projectItems": {
-					"nodes": [
-						{ "id": "ITEMID", "project": { "title": "RoadmapV2" } }
-					]
-				}
-			} } } }`),
-	)
-}
-
 func mockRepoMetadata(_ *testing.T, reg *httpmock.Registry) {
 	reg.Register(
 		httpmock.REST("GET", "repos/OWNER/REPO/labels"),
@@ -1928,37 +1906,6 @@ func mockRepoMetadata(_ *testing.T, reg *httpmock.Registry) {
 		httpmock.StringResponse(`[
 			{ "name": "Triage", "node_id": "TRIAGEID" }
 		]`))
-	reg.Register(
-		httpmock.GraphQL(`query RepositoryProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "repository": { "projectsV2": {
-			"nodes": [
-				{ "title": "CleanupV2", "id": "CLEANUPV2ID" },
-				{ "title": "RoadmapV2", "id": "ROADMAPV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	reg.Register(
-		httpmock.GraphQL(`query OrganizationProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "organization": { "projectsV2": {
-			"nodes": [
-				{ "title": "TriageV2", "id": "TRIAGEV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
-	reg.Register(
-		httpmock.GraphQL(`query UserProjectV2List\b`),
-		httpmock.StringResponse(`
-		{ "data": { "viewer": { "projectsV2": {
-			"nodes": [
-				{ "title": "MonalisaV2", "id": "MONALISAV2ID" }
-			],
-			"pageInfo": { "hasNextPage": false }
-		} } } }
-		`))
 }
 
 func mockIssueUpdate(t *testing.T, reg *httpmock.Registry) {
@@ -2003,15 +1950,6 @@ func mockIssueUpdateLabels(t *testing.T, reg *httpmock.Registry) {
 		httpmock.GraphQL(`mutation LabelRemove\b`),
 		httpmock.GraphQLMutation(`
 		{ "data": { "removeLabelsFromLabelable": { "__typename": "" } } }`,
-			func(inputs map[string]any) {}),
-	)
-}
-
-func mockProjectV2ItemUpdate(t *testing.T, reg *httpmock.Registry) {
-	reg.Register(
-		httpmock.GraphQL(`mutation UpdateProjectV2Items\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "add_000": { "item": { "id": "1" } }, "delete_001": { "item": { "id": "2" } } } }`,
 			func(inputs map[string]any) {}),
 	)
 }

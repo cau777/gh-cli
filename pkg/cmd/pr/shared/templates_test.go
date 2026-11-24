@@ -1,6 +1,8 @@
 package shared
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +15,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func restContentFileResponse(content string) httpmock.Responder {
+	b, _ := json.Marshal(map[string]string{
+		"type":     "file",
+		"encoding": "base64",
+		"content":  base64.StdEncoding.EncodeToString([]byte(content)),
+	})
+	return httpmock.StringResponse(string(b))
+}
+
 func TestTemplateManager_hasAPI(t *testing.T) {
 	rootDir := t.TempDir()
 	legacyTemplateFile := filepath.Join(rootDir, ".github", "ISSUE_TEMPLATE.md")
@@ -24,13 +35,17 @@ func TestTemplateManager_hasAPI(t *testing.T) {
 	defer tr.Verify(t)
 
 	tr.Register(
-		httpmock.GraphQL(`query IssueTemplates\b`),
-		httpmock.StringResponse(`{"data":{"repository":{
-			"issueTemplates": [
-				{"name": "Bug report", "body": "I found a problem", "title": "bug: "},
-				{"name": "Feature request", "body": "I need a feature", "title": "request: "}
-			]
-		}}}`))
+		httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+		httpmock.StringResponse(`[
+			{"name": "bug.md", "path": ".github/ISSUE_TEMPLATE/bug.md", "type": "file"},
+			{"name": "feature.md", "path": ".github/ISSUE_TEMPLATE/feature.md", "type": "file"}
+		]`))
+	tr.Register(
+		httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug.md"),
+		restContentFileResponse("---\nname: Bug report\ntitle: \"bug: \"\n---\nI found a problem"))
+	tr.Register(
+		httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/feature.md"),
+		restContentFileResponse("---\nname: Feature request\ntitle: \"request: \"\n---\nI need a feature"))
 
 	pm := &prompter.PrompterMock{}
 	pm.SelectFunc = func(p, _ string, opts []string) (int, error) {
@@ -76,13 +91,17 @@ func TestTemplateManager_hasAPI_PullRequest(t *testing.T) {
 	defer tr.Verify(t)
 
 	tr.Register(
-		httpmock.GraphQL(`query PullRequestTemplates\b`),
-		httpmock.StringResponse(`{"data":{"repository":{
-			"pullRequestTemplates": [
-				{"filename": "bug_pr.md", "body": "I fixed a problem"},
-				{"filename": "feature_pr.md", "body": "I added a feature"}
-			]
-		}}}`))
+		httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+		httpmock.StringResponse(`[
+			{"name": "bug_pr.md", "path": ".github/PULL_REQUEST_TEMPLATE/bug_pr.md", "type": "file"},
+			{"name": "feature_pr.md", "path": ".github/PULL_REQUEST_TEMPLATE/feature_pr.md", "type": "file"}
+		]`))
+	tr.Register(
+		httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/bug_pr.md"),
+		restContentFileResponse("I fixed a problem"))
+	tr.Register(
+		httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/feature_pr.md"),
+		restContentFileResponse("I added a feature"))
 
 	pm := &prompter.PrompterMock{}
 	pm.SelectFunc = func(p, _ string, opts []string) (int, error) {
@@ -131,8 +150,8 @@ func TestTemplateManagerSelect(t *testing.T) {
 			templateName: "Bug report",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueTemplates\b`),
-					httpmock.StringResponse(`{"data":{"repository":{"issueTemplates":[]}}}`),
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+					httpmock.StringResponse(`[]`),
 				)
 			},
 			wantErr: true,
@@ -143,12 +162,19 @@ func TestTemplateManagerSelect(t *testing.T) {
 			templateName: "Unknown report",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueTemplates\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTemplates": [
-						{ "name": "Bug report", "body": "I found a problem" },
-						{ "name": "Feature request", "body": "I need a feature" }
-					] } } }`),
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{"name": "bug.md", "path": ".github/ISSUE_TEMPLATE/bug.md", "type": "file"},
+						{"name": "feature.md", "path": ".github/ISSUE_TEMPLATE/feature.md", "type": "file"}
+					]`),
+				)
+				reg.Register(
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug.md"),
+					restContentFileResponse("---\nname: Bug report\n---\nI found a problem"),
+				)
+				reg.Register(
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/feature.md"),
+					restContentFileResponse("---\nname: Feature request\n---\nI need a feature"),
 				)
 			},
 			wantErr: true,
@@ -159,12 +185,19 @@ func TestTemplateManagerSelect(t *testing.T) {
 			templateName: "Bug report",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query IssueTemplates\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "issueTemplates": [
-						{ "name": "Bug report", "body": "I found a problem" },
-						{ "name": "Feature request", "body": "I need a feature" }
-					] } } }`),
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{"name": "bug.md", "path": ".github/ISSUE_TEMPLATE/bug.md", "type": "file"},
+						{"name": "feature.md", "path": ".github/ISSUE_TEMPLATE/feature.md", "type": "file"}
+					]`),
+				)
+				reg.Register(
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug.md"),
+					restContentFileResponse("---\nname: Bug report\n---\nI found a problem"),
+				)
+				reg.Register(
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/feature.md"),
+					restContentFileResponse("---\nname: Feature request\n---\nI need a feature"),
 				)
 			},
 			wantTemplate: &issueTemplate{
@@ -178,12 +211,19 @@ func TestTemplateManagerSelect(t *testing.T) {
 			templateName: "feature.md",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestTemplates\b`),
-					httpmock.StringResponse(`
-					{ "data": { "repository": { "PullRequestTemplates": [
-						{ "filename": "bug.md", "body": "I fixed a problem" },
-						{ "filename": "feature.md", "body": "I made a feature" }
-					] } } }`),
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE"),
+					httpmock.StringResponse(`[
+						{"name": "bug.md", "path": ".github/PULL_REQUEST_TEMPLATE/bug.md", "type": "file"},
+						{"name": "feature.md", "path": ".github/PULL_REQUEST_TEMPLATE/feature.md", "type": "file"}
+					]`),
+				)
+				reg.Register(
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/bug.md"),
+					restContentFileResponse("I fixed a problem"),
+				)
+				reg.Register(
+					httpmock.REST("GET", "api/v3/repos/OWNER/REPO/contents/.github/PULL_REQUEST_TEMPLATE/feature.md"),
+					restContentFileResponse("I made a feature"),
 				)
 			},
 			wantTemplate: &pullRequestTemplate{

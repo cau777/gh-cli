@@ -94,7 +94,7 @@ func reopenRun(opts *ReopenOptions) error {
 		}
 	}
 
-	err = api.PullRequestReopen(httpClient, baseRepo, pr.ID)
+	err = api.PullRequestReopen(httpClient, baseRepo, pr.Number)
 	if err != nil {
 		return fmt.Errorf("API call failed: %w", err)
 	}

@@ -450,40 +450,16 @@ func createRun(opts *CreateOptions) error {
 
 	client := ctx.Client
 
-	// Detect ApiActorsSupported feature to determine if we can use search-based
-	// reviewer selection (github.com) or need to use legacy ID-based selection (GHES)
-	issueFeatures, err := opts.Detector.IssueFeatures()
-	if err != nil {
-		return err
-	}
+	// Interactive reviewer/assignee search relies on GraphQL endpoints not available
+	// over REST, so use the static metadata path.
 	var reviewerSearchFunc func(string) prompter.MultiSelectSearchResult
 	var assigneeSearchFunc func(string) prompter.MultiSelectSearchResult
-	if issueFeatures.ApiActorsSupported {
-		reviewerSearchFunc = func(query string) prompter.MultiSelectSearchResult {
-			candidates, moreResults, err := api.SuggestedReviewerActorsForRepo(client, ctx.PRRefs.BaseRepo(), query)
-			if err != nil {
-				return prompter.MultiSelectSearchResult{Err: err}
-			}
-			keys := make([]string, len(candidates))
-			labels := make([]string, len(candidates))
-			for i, c := range candidates {
-				keys[i] = c.Login()
-				labels[i] = c.DisplayName()
-			}
-			return prompter.MultiSelectSearchResult{Keys: keys, Labels: labels, MoreResults: moreResults}
-		}
-		assigneeSearchFunc = shared.RepoAssigneeSearchFunc(client, ctx.PRRefs.BaseRepo())
-	}
 
-	state, err := NewIssueState(*ctx, *opts, issueFeatures.ApiActorsSupported)
+	state, err := NewIssueState(*ctx, *opts, true)
 	if err != nil {
 		return err
 	}
-
-	// TODO ApiActorsSupported
-	if issueFeatures.ApiActorsSupported {
-		state.ApiActorsSupported = true
-	}
+	state.ApiActorsSupported = false
 
 	var openURL string
 
@@ -573,6 +549,7 @@ func createRun(opts *CreateOptions) error {
 		if err != nil {
 			return fmt.Errorf("failed to recover input: %w", err)
 		}
+		state.Type = shared.PRMetadata
 	}
 
 	action := shared.SubmitAction

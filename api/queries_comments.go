@@ -1,9 +1,16 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"regexp"
+	"strconv"
 	"time"
 
-	"github.com/shurcooL/githubv4"
+	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 type Comments struct {
@@ -27,6 +34,7 @@ func (cs Comments) CurrentUserComments() []Comment {
 
 type Comment struct {
 	ID                  string         `json:"id"`
+	DatabaseID          int64          `json:"databaseId,omitempty"`
 	Author              CommentAuthor  `json:"author"`
 	AuthorAssociation   string         `json:"authorAssociation"`
 	Body                string         `json:"body"`
@@ -42,86 +50,123 @@ type Comment struct {
 type CommentCreateInput struct {
 	Body      string
 	SubjectId string
+	Repo      ghrepo.Interface
+	Number    int
 }
 
 type CommentDeleteInput struct {
-	CommentId string
+	CommentId         string
+	Repo              ghrepo.Interface
+	CommentDatabaseID int64
+	CommentURL        string
 }
 
 type CommentUpdateInput struct {
-	Body      string
-	CommentId string
+	Body              string
+	CommentId         string
+	Repo              ghrepo.Interface
+	CommentDatabaseID int64
+	CommentURL        string
+}
+
+var issueCommentURLRE = regexp.MustCompile(`#issuecomment-(\d+)$`)
+
+func resolveRESTCommentID(databaseID int64, commentID, commentURL string) (string, error) {
+	if databaseID > 0 {
+		return strconv.FormatInt(databaseID, 10), nil
+	}
+	if m := issueCommentURLRE.FindStringSubmatch(commentURL); len(m) == 2 {
+		return m[1], nil
+	}
+	if _, err := strconv.ParseInt(commentID, 10, 64); err == nil {
+		return commentID, nil
+	}
+	return "", errors.New("cannot determine numeric REST comment ID")
 }
 
 func CommentCreate(client *Client, repoHost string, params CommentCreateInput) (string, error) {
-	var mutation struct {
-		AddComment struct {
-			CommentEdge struct {
-				Node struct {
-					URL string
-				}
-			}
-		} `graphql:"addComment(input: $input)"`
+	if params.Repo == nil || params.Number <= 0 {
+		return "", errors.New("cannot create comment via REST without repository and issue/pull request number")
 	}
 
-	variables := map[string]any{
-		"input": githubv4.AddCommentInput{
-			Body:      githubv4.String(params.Body),
-			SubjectID: githubv4.ID(params.SubjectId),
-		},
-	}
-
-	err := client.Mutate(repoHost, "CommentCreate", &mutation, variables)
+	path, err := safeurl.JoinPath("repos", params.Repo.RepoOwner(), params.Repo.RepoName(), "issues", strconv.Itoa(params.Number), "comments")
 	if err != nil {
 		return "", err
 	}
 
-	return mutation.AddComment.CommentEdge.Node.URL, nil
+	payload, err := json.Marshal(struct {
+		Body string `json:"body"`
+	}{Body: params.Body})
+	if err != nil {
+		return "", err
+	}
+
+	var resp struct {
+		HTMLURL string `json:"html_url"`
+	}
+	host := repoHost
+	if host == "" {
+		host = params.Repo.RepoHost()
+	}
+	if err := client.REST(host, http.MethodPost, path.String(), bytes.NewReader(payload), &resp); err != nil {
+		return "", err
+	}
+	return resp.HTMLURL, nil
 }
 
 func CommentUpdate(client *Client, repoHost string, params CommentUpdateInput) (string, error) {
-	var mutation struct {
-		UpdateIssueComment struct {
-			IssueComment struct {
-				URL string
-			}
-		} `graphql:"updateIssueComment(input: $input)"`
+	if params.Repo == nil {
+		return "", errors.New("cannot update comment via REST without repository")
 	}
-
-	variables := map[string]any{
-		"input": githubv4.UpdateIssueCommentInput{
-			Body: githubv4.String(params.Body),
-			ID:   githubv4.ID(params.CommentId),
-		},
-	}
-
-	err := client.Mutate(repoHost, "CommentUpdate", &mutation, variables)
+	id, err := resolveRESTCommentID(params.CommentDatabaseID, params.CommentId, params.CommentURL)
 	if err != nil {
 		return "", err
 	}
 
-	return mutation.UpdateIssueComment.IssueComment.URL, nil
+	path, err := safeurl.JoinPath("repos", params.Repo.RepoOwner(), params.Repo.RepoName(), "issues", "comments", id)
+	if err != nil {
+		return "", err
+	}
+
+	payload, err := json.Marshal(struct {
+		Body string `json:"body"`
+	}{Body: params.Body})
+	if err != nil {
+		return "", err
+	}
+
+	var resp struct {
+		HTMLURL string `json:"html_url"`
+	}
+	host := repoHost
+	if host == "" {
+		host = params.Repo.RepoHost()
+	}
+	if err := client.REST(host, http.MethodPatch, path.String(), bytes.NewReader(payload), &resp); err != nil {
+		return "", err
+	}
+	return resp.HTMLURL, nil
 }
 
 func CommentDelete(client *Client, repoHost string, params CommentDeleteInput) error {
-	var mutation struct {
-		DeleteIssueComment struct {
-			ClientMutationID string
-		} `graphql:"deleteIssueComment(input: $input)"`
+	if params.Repo == nil {
+		return errors.New("cannot delete comment via REST without repository")
 	}
-
-	variables := map[string]any{
-		"input": githubv4.DeleteIssueCommentInput{
-			ID: githubv4.ID(params.CommentId),
-		},
-	}
-
-	err := client.Mutate(repoHost, "CommentDelete", &mutation, variables)
+	id, err := resolveRESTCommentID(params.CommentDatabaseID, params.CommentId, params.CommentURL)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	path, err := safeurl.JoinPath("repos", params.Repo.RepoOwner(), params.Repo.RepoName(), "issues", "comments", id)
+	if err != nil {
+		return err
+	}
+
+	host := repoHost
+	if host == "" {
+		host = params.Repo.RepoHost()
+	}
+	return client.REST(host, http.MethodDelete, path.String(), nil, nil)
 }
 
 func (c Comment) Identifier() string {

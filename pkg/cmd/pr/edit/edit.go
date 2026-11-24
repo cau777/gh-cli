@@ -16,7 +16,6 @@ import (
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/gh/ghtelemetry"
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/cli/cli/v2/internal/prompter"
 	shared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -308,17 +307,8 @@ func editRun(opts *EditOptions) error {
 		findOptions.Fields = append(findOptions.Fields, "repository")
 	}
 
-	issueFeatures, err := opts.Detector.IssueFeatures()
-	if err != nil {
-		return err
-	}
-
 	// TODO ApiActorsSupported
-	if issueFeatures.ApiActorsSupported {
-		findOptions.Fields = append(findOptions.Fields, "assignedActors")
-	} else {
-		findOptions.Fields = append(findOptions.Fields, "assignees")
-	}
+	findOptions.Fields = append(findOptions.Fields, "assignees")
 
 	pr, repo, err := opts.Finder.Find(findOptions)
 	if err != nil {
@@ -341,16 +331,11 @@ func editRun(opts *EditOptions) error {
 	editable.Title.Default = pr.Title
 	editable.Body.Default = pr.Body
 	editable.Base.Default = pr.BaseRefName
-	editable.Reviewers.Default = pr.ReviewRequests.DisplayNames()
+	editable.Reviewers.Default = pr.ReviewRequests.Logins()
 	editable.Reviewers.DefaultLogins = pr.ReviewRequests.Logins()
-	// TODO ApiActorsSupported
-	if issueFeatures.ApiActorsSupported {
-		editable.ApiActorsSupported = true
-		editable.Assignees.Default = pr.AssignedActors.DisplayNames()
-		editable.Assignees.DefaultLogins = pr.AssignedActors.Logins()
-	} else {
-		editable.Assignees.Default = pr.Assignees.Logins()
-	}
+	editable.ApiActorsSupported = false
+	editable.Assignees.Default = pr.Assignees.Logins()
+	editable.Assignees.DefaultLogins = pr.Assignees.Logins()
 	editable.Labels.Default = pr.Labels.Names()
 	editable.Projects.Default = append(pr.ProjectCards.ProjectNames(), pr.ProjectItems.ProjectTitles()...)
 	projectItems := map[string]string{}
@@ -369,16 +354,11 @@ func editRun(opts *EditOptions) error {
 		}
 	}
 
-	apiClient := api.NewClientFromHTTP(httpClient)
-
-	// Wire up search functions for assignees and reviewers.
-	// When these aren't wired up, it triggers a downstream fallback
-	// to legacy reviewer/assignee fetching.
-	// TODO ApiActorsSupported
-	if issueFeatures.ApiActorsSupported {
-		editable.AssigneeSearchFunc = shared.AssigneeSearchFunc(apiClient, repo, pr.ID)
-		editable.ReviewerSearchFunc = reviewerSearchFunc(apiClient, repo, &editable, pr.ID)
+	if editable.Projects.Edited {
+		return api.NotSupportedError("editing pull request projects is not supported with REST")
 	}
+
+	apiClient := api.NewClientFromHTTP(httpClient)
 
 	opts.IO.StartProgressIndicator()
 	err = opts.Fetcher.EditableOptionsFetch(apiClient, repo, &editable, opts.Detector.ProjectsV1())
@@ -437,7 +417,7 @@ func editRun(opts *EditOptions) error {
 	}
 
 	opts.IO.StartProgressIndicator()
-	err = updatePullRequest(httpClient, repo, pr.ID, pr.Number, editable)
+	err = updatePullRequest(httpClient, repo, pr.Number, editable)
 	opts.IO.StopProgressIndicator()
 	if err != nil {
 		// A failed write does not undo an upload, so both are reported.
@@ -449,65 +429,20 @@ func editRun(opts *EditOptions) error {
 	return uploadErr
 }
 
-// reviewerSearchFunc is intended to be an arg for MultiSelectWithSearch
-// to return potential reviewer candidates (users, bots, and teams).
-// It also updates the editable's metadata for later ID resolution.
-func reviewerSearchFunc(apiClient *api.Client, repo ghrepo.Interface, editable *shared.Editable, prID string) func(string) prompter.MultiSelectSearchResult {
-	searchFunc := func(input string) prompter.MultiSelectSearchResult {
-		candidates, moreResults, err := api.SuggestedReviewerActors(
-			apiClient,
-			repo,
-			prID,
-			input)
-		if err != nil {
-			return prompter.MultiSelectSearchResult{
-				Keys:        nil,
-				Labels:      nil,
-				MoreResults: 0,
-				Err:         err,
-			}
-		}
-
-		keys := make([]string, 0, len(candidates))
-		labels := make([]string, 0, len(candidates))
-
-		for _, c := range candidates {
-			keys = append(keys, c.Login())
-			labels = append(labels, c.DisplayName())
-
-			// Update the teams metadata in the editable struct
-			// so that updating the PR later can resolve the team ID.
-			if team, ok := c.(api.ReviewerTeam); ok {
-				editable.Metadata.Teams = append(editable.Metadata.Teams, api.OrgTeam{
-					ID:   "", // ID not needed for REST API reviewer mutations
-					Slug: team.Slug(),
-				})
-			}
-		}
-		return prompter.MultiSelectSearchResult{
-			Keys:        keys,
-			Labels:      labels,
-			MoreResults: moreResults,
-			Err:         nil,
-		}
-	}
-	return searchFunc
-}
-
-func updatePullRequest(httpClient *http.Client, repo ghrepo.Interface, id string, number int, editable shared.Editable) error {
+func updatePullRequest(httpClient *http.Client, repo ghrepo.Interface, number int, editable shared.Editable) error {
 	var wg errgroup.Group
 	wg.Go(func() error {
-		return shared.UpdateIssue(httpClient, repo, id, true, editable)
+		return shared.UpdatePullRequestREST(httpClient, repo, number, editable)
 	})
 	if editable.Reviewers.Edited {
 		wg.Go(func() error {
-			return updatePullRequestReviews(httpClient, repo, id, number, editable)
+			return updatePullRequestReviews(httpClient, repo, number, editable)
 		})
 	}
 	return wg.Wait()
 }
 
-func updatePullRequestReviews(httpClient *http.Client, repo ghrepo.Interface, prID string, number int, editable shared.Editable) error {
+func updatePullRequestReviews(httpClient *http.Client, repo ghrepo.Interface, number int, editable shared.Editable) error {
 	if !editable.Reviewers.Edited {
 		return nil
 	}
@@ -516,48 +451,29 @@ func updatePullRequestReviews(httpClient *http.Client, repo ghrepo.Interface, pr
 
 	// Rebuild the Value slice from non-interactive flag input.
 	if len(editable.Reviewers.Add) != 0 || len(editable.Reviewers.Remove) != 0 {
-		add := editable.Reviewers.Add
-		remove := editable.Reviewers.Remove
-
-		// Replace @copilot with the Copilot reviewer login (only on github.com).
-		// Also use DefaultLogins (not Default display names) for computing the set.
-		var defaultLogins []string
-		// TODO ApiActorsSupported
-		if editable.ApiActorsSupported {
-			copilotReplacer := shared.NewCopilotReviewerReplacer()
-			add = copilotReplacer.ReplaceSlice(add)
-			remove = copilotReplacer.ReplaceSlice(remove)
-			defaultLogins = editable.Reviewers.DefaultLogins
-		} else {
-			// On GHES, Default already contains logins (no display name distinction)
-			defaultLogins = editable.Reviewers.Default
+		for _, r := range append(slices.Clone(editable.Reviewers.Add), editable.Reviewers.Remove...) {
+			if strings.EqualFold(r, "@copilot") || r == api.CopilotReviewerLogin {
+				return api.NotSupportedError("requesting Copilot as a reviewer is not supported with REST")
+			}
 		}
 
 		s := set.NewStringSet()
-		s.AddValues(add)
-		s.AddValues(defaultLogins)
-		s.RemoveValues(remove)
+		s.AddValues(editable.Reviewers.Add)
+		s.AddValues(editable.Reviewers.Default)
+		s.RemoveValues(editable.Reviewers.Remove)
 		editable.Reviewers.Value = s.ToSlice()
 	}
 
-	// On github.com, use the new GraphQL mutation which supports bots.
-	// On GHES, fall back to REST API.
-	// TODO ApiActorsSupported
-	if editable.ApiActorsSupported {
-		return updatePullRequestReviewsGraphQL(client, repo, prID, editable)
+	for _, r := range editable.Reviewers.Value {
+		if strings.EqualFold(r, "@copilot") || r == api.CopilotReviewerLogin {
+			return api.NotSupportedError("requesting Copilot as a reviewer is not supported with REST")
+		}
 	}
+
 	return updatePullRequestReviewsREST(client, repo, number, editable)
 }
 
-// updatePullRequestReviewsGraphQL uses the RequestReviewsByLogin mutation.
-// This mutation replaces the entire reviewer set (union: false).
-func updatePullRequestReviewsGraphQL(client *api.Client, repo ghrepo.Interface, prID string, editable shared.Editable) error {
-	users, bots, teams := partitionReviewersByType(editable.Reviewers.Value)
-	return api.RequestReviewsByLogin(client, repo, prID, users, bots, teams, false)
-}
-
 // updatePullRequestReviewsREST uses the REST API to add/remove reviewers.
-// This is the legacy path for GHES compatibility.
 func updatePullRequestReviewsREST(client *api.Client, repo ghrepo.Interface, number int, editable shared.Editable) error {
 	addUsers, addBots, addTeams := partitionReviewersByType(editable.Reviewers.Value)
 	// REST API doesn't distinguish bots from users, so we need to combine them.

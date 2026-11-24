@@ -284,15 +284,19 @@ func (m *mergeContext) merge() error {
 	}
 
 	payload := mergePayload{
-		repo:            m.baseRepo,
-		pullRequestID:   m.pr.ID,
-		method:          m.opts.MergeMethod,
-		auto:            m.autoMerge,
-		commitSubject:   m.opts.Subject,
-		commitBody:      m.opts.Body,
-		setCommitBody:   m.opts.BodySet,
-		expectedHeadOid: m.opts.MatchHeadCommit,
-		authorEmail:     m.opts.AuthorEmail,
+		repo:              m.baseRepo,
+		pullRequestID:     m.pr.ID,
+		pullRequestNumber: m.pr.Number,
+		prTitle:           m.pr.Title,
+		prBody:            m.pr.Body,
+		headRefName:       m.pr.HeadRefName,
+		method:            m.opts.MergeMethod,
+		auto:              m.autoMerge,
+		commitSubject:     m.opts.Subject,
+		commitBody:        m.opts.Body,
+		setCommitBody:     m.opts.BodySet,
+		expectedHeadOid:   m.opts.MatchHeadCommit,
+		authorEmail:       m.opts.AuthorEmail,
 	}
 
 	if m.shouldAddToMergeQueue() {
@@ -568,7 +572,7 @@ func (m *mergeContext) infof(format string, args ...any) error {
 func NewMergeContext(opts *MergeOptions) (*mergeContext, error) {
 	findOptions := shared.FindOptions{
 		Selector: opts.SelectorArg,
-		Fields:   []string{"id", "number", "state", "title", "lastCommit", "mergeStateStatus", "headRefName", "baseRefName", "headRefOid", "isCrossRepository", "isInMergeQueue", "isMergeQueueEnabled"},
+		Fields:   []string{"id", "number", "state", "title", "body", "lastCommit", "mergeStateStatus", "headRefName", "baseRefName", "headRefOid", "isCrossRepository", "isInMergeQueue", "isMergeQueueEnabled"},
 	}
 	pr, baseRepo, err := opts.Finder.Find(findOptions)
 	if err != nil {
@@ -598,6 +602,16 @@ func NewMergeContext(opts *MergeOptions) (*mergeContext, error) {
 
 // Run the merge command.
 func mergeRun(opts *MergeOptions) error {
+	if opts.AutoMergeDisable {
+		return api.NotSupportedError("disabling auto-merge is not supported with REST")
+	}
+	if opts.AutoMergeEnable {
+		return api.NotSupportedError("enabling auto-merge is not supported with REST")
+	}
+	if opts.AuthorEmail != "" {
+		return api.NotSupportedError("setting commit author email (--author-email) is not supported with REST")
+	}
+
 	ctx, err := NewMergeContext(opts)
 	if err != nil {
 		return err
@@ -720,7 +734,7 @@ func confirmSubmission(client *http.Client, opts *MergeOptions, action shared.Ac
 	switch action {
 	case shared.EditCommitMessageAction:
 		if !payload.setCommitBody {
-			_, payload.commitBody, err = getMergeText(client, payload.repo, payload.pullRequestID, payload.method)
+			_, payload.commitBody, err = getMergeText(client, *payload)
 			if err != nil {
 				return false, err
 			}
@@ -736,7 +750,7 @@ func confirmSubmission(client *http.Client, opts *MergeOptions, action shared.Ac
 
 	case shared.EditCommitSubjectAction:
 		if payload.commitSubject == "" {
-			payload.commitSubject, _, err = getMergeText(client, payload.repo, payload.pullRequestID, payload.method)
+			payload.commitSubject, _, err = getMergeText(client, *payload)
 			if err != nil {
 				return false, err
 			}

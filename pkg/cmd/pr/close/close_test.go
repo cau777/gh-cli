@@ -113,11 +113,10 @@ func TestPrClose(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "96", pr, baseRepo)
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestClose\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/96"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "closed"}, payload)
+		}),
 	)
 
 	output, err := runCommand(http, true, "96")
@@ -150,11 +149,10 @@ func TestPrClose_deleteBranch_sameRepo(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "96", pr, baseRepo)
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestClose\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/96"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "closed"}, payload)
+		}),
 	)
 	http.Register(
 		httpmock.REST("DELETE", "repos/OWNER/REPO/git/refs/heads%2Fblueberries"),
@@ -184,11 +182,10 @@ func TestPrClose_deleteBranch_crossRepo(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "96", pr, baseRepo)
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestClose\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/96"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "closed"}, payload)
+		}),
 	)
 
 	cs, cmdTeardown := run.Stub()
@@ -216,11 +213,10 @@ func TestPrClose_deleteBranch_sameBranch(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "96", pr, baseRepo)
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestClose\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/96"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "closed"}, payload)
+		}),
 	)
 	http.Register(
 		httpmock.REST("DELETE", "repos/OWNER/REPO/git/refs/heads%2Ftrunk"),
@@ -251,11 +247,10 @@ func TestPrClose_deleteBranch_notInGitRepo(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "96", pr, baseRepo)
 
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestClose\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/96"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "closed"}, payload)
+		}),
 	)
 	http.Register(
 		httpmock.REST("DELETE", "repos/OWNER/REPO/git/refs/heads%2Ftrunk"),
@@ -285,22 +280,17 @@ func TestPrClose_withComment(t *testing.T) {
 	shared.StubFinderForRunCommandStyleTests(t, "96", pr, baseRepo)
 
 	http.Register(
-		httpmock.GraphQL(`mutation CommentCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "addComment": { "commentEdge": { "node": {
-			"url": "https://github.com/OWNER/REPO/issues/123#issuecomment-456"
-		} } } } }`,
-			func(inputs map[string]any) {
-				assert.Equal(t, "THE-ID", inputs["subjectId"])
-				assert.Equal(t, "closing comment", inputs["body"])
+		httpmock.REST("POST", "repos/OWNER/REPO/issues/96/comments"),
+		httpmock.RESTPayload(201, `{"html_url": "https://github.com/OWNER/REPO/issues/96#issuecomment-456"}`,
+			func(payload map[string]any) {
+				assert.Equal(t, map[string]any{"body": "closing comment"}, payload)
 			}),
 	)
 	http.Register(
-		httpmock.GraphQL(`mutation PullRequestClose\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["pullRequestId"], "THE-ID")
-			}),
+		httpmock.REST("PATCH", "repos/OWNER/REPO/pulls/96"),
+		httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+			assert.Equal(t, map[string]any{"state": "closed"}, payload)
+		}),
 	)
 
 	output, err := runCommand(http, true, "96 --comment 'closing comment'")

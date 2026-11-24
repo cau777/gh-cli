@@ -1,12 +1,10 @@
 package ready
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/api"
-	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -64,52 +62,8 @@ func NewCmdReady(f *cmdutil.Factory, runF func(*ReadyOptions) error) *cobra.Comm
 }
 
 func readyRun(opts *ReadyOptions) error {
-	cs := opts.IO.ColorScheme()
-
-	findOptions := shared.FindOptions{
-		Selector: opts.SelectorArg,
-		Fields:   []string{"id", "number", "state", "isDraft"},
+	if opts.Undo {
+		return api.NotSupportedError("converting a pull request to draft is not supported with REST")
 	}
-	pr, baseRepo, err := opts.Finder.Find(findOptions)
-	if err != nil {
-		return err
-	}
-
-	if !pr.IsOpen() {
-		fmt.Fprintf(opts.IO.ErrOut, "%s Pull request %s#%d is closed. Only draft pull requests can be marked as \"ready for review\"\n", cs.FailureIcon(), ghrepo.FullName(baseRepo), pr.Number)
-		return cmdutil.SilentError
-	}
-
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return err
-	}
-	apiClient := api.NewClientFromHTTP(httpClient)
-
-	if opts.Undo { // convert to draft
-		if pr.IsDraft {
-			fmt.Fprintf(opts.IO.ErrOut, "%s Pull request %s#%d is already \"in draft\"\n", cs.WarningIcon(), ghrepo.FullName(baseRepo), pr.Number)
-			return nil
-		}
-		err = api.ConvertPullRequestToDraft(apiClient, baseRepo, pr)
-		if err != nil {
-			return fmt.Errorf("API call failed: %w", err)
-		}
-
-		fmt.Fprintf(opts.IO.ErrOut, "%s Pull request %s#%d is converted to \"draft\"\n", cs.SuccessIconWithColor(cs.Green), ghrepo.FullName(baseRepo), pr.Number)
-	} else { // mark as ready for review
-		if !pr.IsDraft {
-			fmt.Fprintf(opts.IO.ErrOut, "%s Pull request %s#%d is already \"ready for review\"\n", cs.WarningIcon(), ghrepo.FullName(baseRepo), pr.Number)
-			return nil
-		}
-
-		err = api.PullRequestReady(apiClient, baseRepo, pr)
-		if err != nil {
-			return fmt.Errorf("API call failed: %w", err)
-		}
-
-		fmt.Fprintf(opts.IO.ErrOut, "%s Pull request %s#%d is marked as \"ready for review\"\n", cs.SuccessIconWithColor(cs.Green), ghrepo.FullName(baseRepo), pr.Number)
-	}
-
-	return nil
+	return api.NotSupportedError("marking a pull request ready for review is not supported with REST")
 }

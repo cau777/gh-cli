@@ -61,6 +61,69 @@ func AddMetadataToIssueParams(client *api.Client, baseRepo ghrepo.Interface, par
 		return nil
 	}
 
+	if tb.Type == PRMetadata {
+		if len(tb.ProjectTitles) > 0 {
+			return api.NotSupportedError("adding a pull request to projects is not supported with REST")
+		}
+		for _, a := range tb.Assignees {
+			if strings.EqualFold(a, "@copilot") || a == api.CopilotAssigneeLogin {
+				return api.NotSupportedError("assigning Copilot is not supported with REST")
+			}
+		}
+
+		var userReviewers []string
+		var teamReviewers []string
+		for _, r := range tb.Reviewers {
+			if strings.EqualFold(r, "@copilot") || r == api.CopilotReviewerLogin {
+				return api.NotSupportedError("requesting Copilot as a reviewer is not supported with REST")
+			}
+			if strings.ContainsRune(r, '/') {
+				teamReviewers = append(teamReviewers, r)
+			} else {
+				userReviewers = append(userReviewers, r)
+			}
+		}
+		if len(userReviewers) > 0 {
+			params["userReviewerLogins"] = userReviewers
+		}
+		if len(teamReviewers) > 0 {
+			params["teamReviewerSlugs"] = teamReviewers
+		}
+		if len(tb.Assignees) > 0 {
+			params["assigneeLogins"] = tb.Assignees
+		}
+
+		needLabels := len(tb.Labels) > 0
+		needMilestones := len(tb.Milestones) > 0
+		if needLabels || needMilestones {
+			if tb.MetadataResult == nil {
+				metadataResult, err := api.RepoMetadata(client, baseRepo, api.RepoMetadataInput{
+					Labels:     needLabels,
+					Milestones: needMilestones,
+				})
+				if err != nil {
+					return err
+				}
+				tb.MetadataResult = metadataResult
+			}
+			if needLabels {
+				labelNames, err := tb.MetadataResult.LabelsToNames(tb.Labels)
+				if err != nil {
+					return fmt.Errorf("could not add label: %w", err)
+				}
+				params["labelNames"] = labelNames
+			}
+			if needMilestones {
+				milestoneNum, err := tb.MetadataResult.MilestoneToNumber(tb.Milestones[0])
+				if err != nil {
+					return fmt.Errorf("could not add to milestone '%s': %w", tb.Milestones[0], err)
+				}
+				params["milestoneNumber"] = milestoneNum
+			}
+		}
+		return nil
+	}
+
 	// TODO ApiActorsSupported
 	// When ApiActorsSupported is true, we use login-based mutation and don't need to resolve reviewer IDs.
 	needReviewerIDs := len(tb.Reviewers) > 0 && !tb.ApiActorsSupported

@@ -173,7 +173,7 @@ func closeRun(opts *CloseOptions) error {
 
 func apiClose(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue, reason string, duplicateIssueID string) error {
 	if issue.IsPullRequest() {
-		return api.PullRequestClose(httpClient, repo, issue.ID)
+		return api.PullRequestClose(httpClient, repo, issue.Number)
 	}
 
 	switch reason {

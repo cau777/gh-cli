@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -156,34 +157,11 @@ func Test_transferRun_noflags(t *testing.T) {
 	assert.Equal(t, "", output.String())
 }
 
-func Test_transferRunSuccessfulIssueTransfer(t *testing.T) {
+func Test_transferRunUnsupported(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
 
-	http.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/issues/1234"),
-		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 1234, "title": "The title of the issue"}`))
-
-	http.Register(
-		httpmock.REST("GET", "repos/OWNER1/REPO1"),
-		httpmock.StringResponse(`{
-			"node_id": "dest-id",
-			"name": "REPO1",
-			"owner": { "login": "OWNER1" },
-			"permissions": { "push": true },
-			"has_issues": true
-		}`))
-
-	http.Register(
-		httpmock.GraphQL(`mutation IssueTransfer\b`),
-		httpmock.GraphQLMutation(`{"data":{"transferIssue":{"issue":{"url":"https://github.com/OWNER1/REPO1/issues/1"}}}}`, func(input map[string]any) {
-			assert.Equal(t, input["issueId"], "THE-ID")
-			assert.Equal(t, input["repositoryId"], "dest-id")
-		}))
-
 	output, err := runCommand(http, "1234 OWNER1/REPO1")
-	if err != nil {
-		t.Errorf("error running command `issue transfer`: %v", err)
-	}
-	assert.Equal(t, "https://github.com/OWNER1/REPO1/issues/1\n", output.String())
+	require.ErrorIs(t, err, api.ErrNotSupported)
+	assert.Equal(t, "", output.String())
 }

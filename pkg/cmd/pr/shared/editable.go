@@ -18,7 +18,6 @@ type Editable struct {
 	Reviewers          EditableReviewers
 	ReviewerSearchFunc func(string) prompter.MultiSelectSearchResult
 	Assignees          EditableAssignees
-	AssigneeSearchFunc func(string) prompter.MultiSelectSearchResult
 	Labels             EditableSlice
 	Projects           EditableProjects
 	Milestone          EditableString
@@ -301,7 +300,6 @@ func (e *Editable) Clone() Editable {
 		Reviewers:          e.Reviewers.clone(),
 		ReviewerSearchFunc: e.ReviewerSearchFunc,
 		Assignees:          e.Assignees.clone(),
-		AssigneeSearchFunc: e.AssigneeSearchFunc,
 		Labels:             e.Labels.clone(),
 		Projects:           e.Projects.clone(),
 		Milestone:          e.Milestone.clone(),
@@ -409,24 +407,10 @@ func EditFieldsSurvey(p EditPrompter, editable *Editable, editorCommand string) 
 		}
 	}
 	if editable.Assignees.Edited {
-		if editable.AssigneeSearchFunc != nil {
-			editable.Assignees.Options = []string{}
-			editable.Assignees.Value, err = p.MultiSelectWithSearch(
-				"Assignees",
-				"Search assignees",
-				editable.Assignees.DefaultLogins,
-				// No persistent options required here as teams cannot be assignees.
-				[]string{},
-				editable.AssigneeSearchFunc)
-			if err != nil {
-				return err
-			}
-		} else {
-			editable.Assignees.Value, err = multiSelectSurvey(
-				p, "Assignees", editable.Assignees.Default, editable.Assignees.Options)
-			if err != nil {
-				return err
-			}
+		editable.Assignees.Value, err = multiSelectSurvey(
+			p, "Assignees", editable.Assignees.Default, editable.Assignees.Options)
+		if err != nil {
+			return err
 		}
 	}
 	if editable.Labels.Edited {
@@ -541,17 +525,7 @@ func FetchOptions(client *api.Client, repo ghrepo.Interface, editable *Editable,
 
 	fetchAssignees := false
 	if editable.Assignees.Edited {
-		// Similar as above, this is likely an interactive flow if no Add/Remove slices are set.
-		// If we have a search func, we don't need to fetch assignees since we
-		// assume that will be done dynamically in the prompting flow.
-		if len(editable.Assignees.Add) == 0 && len(editable.Assignees.Remove) == 0 && editable.AssigneeSearchFunc == nil {
-			fetchAssignees = true
-		}
-		// For non-interactive Add/Remove operations, we only need to fetch assignees
-		// on GHES where ID resolution is required. On github.com (ApiActorsSupported),
-		// logins are passed directly to the mutation.
-		// TODO ApiActorsSupported
-		if (len(editable.Assignees.Add) > 0 || len(editable.Assignees.Remove) > 0) && !editable.ApiActorsSupported {
+		if len(editable.Assignees.Add) == 0 && len(editable.Assignees.Remove) == 0 {
 			fetchAssignees = true
 		}
 	}
@@ -659,51 +633,4 @@ func milestoneSurvey(p EditPrompter, title string, opts []string) (result string
 
 	result = opts[selected]
 	return
-}
-
-// AssigneeSearchFunc returns a search function for MultiSelectWithSearch that
-// dynamically fetches assignable actors for the given assignable (Issue/PR) node ID.
-func AssigneeSearchFunc(apiClient *api.Client, repo ghrepo.Interface, assignableID string) func(string) prompter.MultiSelectSearchResult {
-	return func(input string) prompter.MultiSelectSearchResult {
-		actors, count, err := api.SuggestedAssignableActors(apiClient, repo, assignableID, input)
-		if err != nil {
-			return prompter.MultiSelectSearchResult{Err: err}
-		}
-		return actorsToSearchResult(actors, count)
-	}
-}
-
-// RepoAssigneeSearchFunc returns a search function for MultiSelectWithSearch that
-// dynamically fetches assignable actors at the repository level. Used during create
-// flows where no issue/PR node ID exists yet.
-func RepoAssigneeSearchFunc(apiClient *api.Client, repo ghrepo.Interface) func(string) prompter.MultiSelectSearchResult {
-	return func(input string) prompter.MultiSelectSearchResult {
-		actors, count, err := api.SearchRepoAssignableActors(apiClient, repo, input)
-		if err != nil {
-			return prompter.MultiSelectSearchResult{Err: err}
-		}
-		return actorsToSearchResult(actors, count)
-	}
-}
-
-func actorsToSearchResult(actors []api.AssignableActor, totalCount int) prompter.MultiSelectSearchResult {
-	logins := make([]string, 0, len(actors))
-	displayNames := make([]string, 0, len(actors))
-
-	for _, a := range actors {
-		if a.Login() == "" {
-			continue
-		}
-		logins = append(logins, a.Login())
-		if a.DisplayName() != "" {
-			displayNames = append(displayNames, a.DisplayName())
-		} else {
-			displayNames = append(displayNames, a.Login())
-		}
-	}
-	return prompter.MultiSelectSearchResult{
-		Keys:        logins,
-		Labels:      displayNames,
-		MoreResults: totalCount,
-	}
 }

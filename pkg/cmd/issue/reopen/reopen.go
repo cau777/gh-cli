@@ -1,17 +1,19 @@
 package reopen
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -120,20 +122,11 @@ func apiReopen(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue)
 		return api.PullRequestReopen(httpClient, repo, issue.Number)
 	}
 
-	var mutation struct {
-		ReopenIssue struct {
-			Issue struct {
-				ID githubv4.ID
-			}
-		} `graphql:"reopenIssue(input: $input)"`
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(issue.Number))
+	if err != nil {
+		return err
 	}
 
-	variables := map[string]any{
-		"input": githubv4.ReopenIssueInput{
-			IssueID: issue.ID,
-		},
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-	return gql.Mutate(repo.RepoHost(), "IssueReopen", &mutation, variables)
+	client := api.NewClientFromHTTP(httpClient)
+	return client.REST(repo.RepoHost(), http.MethodPatch, p.String(), bytes.NewBufferString(`{"state":"open","state_reason":"reopened"}`), nil)
 }

@@ -99,11 +99,12 @@ func (r *restLinkedIssue) toLinkedIssue(fallbackRepo ghrepo.Interface) LinkedIss
 	}
 
 	li := LinkedIssue{
-		ID:     id,
-		Number: r.Number,
-		Title:  r.Title,
-		URL:    r.HTMLURL,
-		State:  strings.ToUpper(r.State),
+		ID:         id,
+		DatabaseID: r.ID,
+		Number:     r.Number,
+		Title:      r.Title,
+		URL:        r.HTMLURL,
+		State:      strings.ToUpper(r.State),
 	}
 	li.Repository.NameWithOwner = nameWithOwner
 	return li

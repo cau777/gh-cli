@@ -1,17 +1,20 @@
 package close
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -109,6 +112,10 @@ func closeRun(opts *CloseOptions) error {
 		return err
 	}
 
+	if opts.DuplicateOf != "" {
+		return api.NotSupportedError("marking an issue as a duplicate of a specific issue is not supported with REST")
+	}
+
 	issue, err := shared.FindIssueOrPR(httpClient, baseRepo, opts.IssueNumber, []string{"id", "number", "title", "state"})
 	if err != nil {
 		return err
@@ -117,32 +124,6 @@ func closeRun(opts *CloseOptions) error {
 	if issue.State == "CLOSED" {
 		fmt.Fprintf(opts.IO.ErrOut, "%s Issue %s#%d (%s) is already closed\n", cs.Yellow("!"), ghrepo.FullName(baseRepo), issue.Number, issue.Title)
 		return nil
-	}
-
-	var duplicateIssueID string
-	if opts.DuplicateOf != "" {
-		if issue.IsPullRequest() {
-			return cmdutil.FlagErrorf("`--duplicate-of` is only supported for issues")
-		}
-		duplicateIssueNumber, duplicateRepo, err := shared.ParseIssueFromArg(opts.DuplicateOf)
-		if err != nil {
-			return cmdutil.FlagErrorf("invalid value for `--duplicate-of`: %v", err)
-		}
-		duplicateIssueRepo := baseRepo
-		if parsedRepo, present := duplicateRepo.Value(); present {
-			duplicateIssueRepo = parsedRepo
-		}
-		if ghrepo.IsSame(baseRepo, duplicateIssueRepo) && issue.Number == duplicateIssueNumber {
-			return cmdutil.FlagErrorf("`--duplicate-of` cannot reference the current issue")
-		}
-		duplicateIssue, err := shared.FindIssueOrPR(httpClient, duplicateIssueRepo, duplicateIssueNumber, []string{"id"})
-		if err != nil {
-			return err
-		}
-		if duplicateIssue.IsPullRequest() {
-			return cmdutil.FlagErrorf("`--duplicate-of` must reference an issue")
-		}
-		duplicateIssueID = duplicateIssue.ID
 	}
 
 	if opts.Comment != "" {
@@ -161,7 +142,7 @@ func closeRun(opts *CloseOptions) error {
 		}
 	}
 
-	err = apiClose(httpClient, baseRepo, issue, closeReason, duplicateIssueID)
+	err = apiClose(httpClient, baseRepo, issue, closeReason)
 	if err != nil {
 		return err
 	}
@@ -171,7 +152,7 @@ func closeRun(opts *CloseOptions) error {
 	return nil
 }
 
-func apiClose(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue, reason string, duplicateIssueID string) error {
+func apiClose(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue, reason string) error {
 	if issue.IsPullRequest() {
 		return api.PullRequestClose(httpClient, repo, issue.Number)
 	}
@@ -180,35 +161,29 @@ func apiClose(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue, 
 	case "":
 		// If no reason is specified do not set it.
 	case "not planned":
-		reason = "NOT_PLANNED"
+		reason = "not_planned"
 	case "duplicate":
-		reason = "DUPLICATE"
+		reason = "duplicate"
 	default:
-		reason = "COMPLETED"
+		reason = "completed"
 	}
 
-	var mutation struct {
-		CloseIssue struct {
-			Issue struct {
-				ID githubv4.ID
-			}
-		} `graphql:"closeIssue(input: $input)"`
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(issue.Number))
+	if err != nil {
+		return err
 	}
 
-	variables := map[string]any{
-		"input": CloseIssueInput{
-			IssueID:          issue.ID,
-			StateReason:      reason,
-			DuplicateIssueID: duplicateIssueID,
-		},
+	payload, err := json.Marshal(struct {
+		State       string `json:"state"`
+		StateReason string `json:"state_reason,omitempty"`
+	}{
+		State:       "closed",
+		StateReason: reason,
+	})
+	if err != nil {
+		return err
 	}
 
-	gql := api.NewClientFromHTTP(httpClient)
-	return gql.Mutate(repo.RepoHost(), "IssueClose", &mutation, variables)
-}
-
-type CloseIssueInput struct {
-	IssueID          string `json:"issueId"`
-	StateReason      string `json:"stateReason,omitempty"`
-	DuplicateIssueID string `json:"duplicateIssueId,omitempty"`
+	client := api.NewClientFromHTTP(httpClient)
+	return client.REST(repo.RepoHost(), http.MethodPatch, p.String(), bytes.NewReader(payload), nil)
 }

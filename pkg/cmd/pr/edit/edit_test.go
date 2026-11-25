@@ -490,7 +490,7 @@ func Test_editRun(t *testing.T) {
 				Fetcher: testFetcher{},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				mockRepoMetadata(reg, mockRepoMetadataOptions{reviewers: false, teamReviewers: false, assignees: true, labels: true, milestones: true})
+				mockRepoMetadata(reg, mockRepoMetadataOptions{reviewers: false, teamReviewers: false, labels: true, milestones: true})
 				mockPullRequestUpdate(reg)
 				mockPullRequestUpdateIssue(reg)
 				mockPullRequestAddReviewers(reg)
@@ -538,7 +538,7 @@ func Test_editRun(t *testing.T) {
 				Fetcher: testFetcher{},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				mockRepoMetadata(reg, mockRepoMetadataOptions{assignees: true, labels: true, milestones: true})
+				mockRepoMetadata(reg, mockRepoMetadataOptions{labels: true, milestones: true})
 				mockPullRequestUpdate(reg)
 				mockPullRequestUpdateIssue(reg)
 				mockPullRequestUpdateLabels(reg)
@@ -601,7 +601,7 @@ func Test_editRun(t *testing.T) {
 				Fetcher: testFetcher{},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				mockRepoMetadata(reg, mockRepoMetadataOptions{reviewers: false, teamReviewers: false, assignees: true, labels: true, milestones: true})
+				mockRepoMetadata(reg, mockRepoMetadataOptions{reviewers: false, teamReviewers: false, labels: true, milestones: true})
 				mockPullRequestUpdate(reg)
 				mockPullRequestUpdateIssue(reg)
 				mockPullRequestRemoveReviewers(reg)
@@ -926,12 +926,6 @@ func Test_editRun(t *testing.T) {
 				Fetcher: testFetcher{},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
-					httpmock.StringResponse(`[
-						{ "login": "hubot", "node_id": "HUBOTID" },
-						{ "login": "monalisa", "node_id": "MONAID" }
-					]`))
 				mockPullRequestUpdateIssue(reg)
 			},
 			stdout: "https://github.com/OWNER/REPO/pull/123\n",
@@ -956,7 +950,6 @@ func Test_editRun(t *testing.T) {
 					},
 					editFields: func(e *shared.Editable, _ string) error {
 						require.False(t, e.ApiActorsSupported)
-						require.Nil(t, e.AssigneeSearchFunc)
 						require.Contains(t, e.Assignees.Options, "monalisa")
 						require.Contains(t, e.Assignees.Options, "hubot")
 

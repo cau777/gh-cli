@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -20,24 +21,17 @@ func TestNewCmdUnpin(t *testing.T) {
 
 func TestUnpinRun(t *testing.T) {
 	tests := []struct {
-		name       string
-		tty        bool
-		opts       *UnpinOptions
-		httpStubs  func(*httpmock.Registry)
-		wantStdout string
-		wantStderr string
+		name      string
+		tty       bool
+		opts      *UnpinOptions
+		httpStubs func(*httpmock.Registry)
+		wantErr   error
 	}{
 		{
-			name: "issue not pinned",
-			tty:  true,
-			opts: &UnpinOptions{IssueNumber: 20},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/20"),
-					httpmock.StringResponse(`{ "node_id": "ISSUE-ID", "number": 20, "title": "Issue Title"}`),
-				)
-			},
-			wantStderr: "! Issue OWNER/REPO#20 (Issue Title) is not pinned\n",
+			name:    "unpin unsupported",
+			tty:     true,
+			opts:    &UnpinOptions{IssueNumber: 20},
+			wantErr: api.ErrNotSupported,
 		},
 	}
 	for _, tt := range tests {
@@ -49,7 +43,7 @@ func TestUnpinRun(t *testing.T) {
 			return &http.Client{Transport: reg}, nil
 		}
 
-		ios, _, stdout, stderr := iostreams.Test()
+		ios, _, _, _ := iostreams.Test()
 		ios.SetStdinTTY(tt.tty)
 		ios.SetStdoutTTY(tt.tty)
 		tt.opts.IO = ios
@@ -65,9 +59,7 @@ func TestUnpinRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			defer reg.Verify(t)
 			err := unpinRun(tt.opts)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.wantStdout, stdout.String())
-			assert.Equal(t, tt.wantStderr, stderr.String())
+			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 }

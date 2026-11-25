@@ -1,7 +1,6 @@
 package delete
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/cli/cli/v2/api"
@@ -10,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -74,63 +72,5 @@ func NewCmdDelete(f *cmdutil.Factory, runF func(*DeleteOptions) error) *cobra.Co
 }
 
 func deleteRun(opts *DeleteOptions) error {
-	cs := opts.IO.ColorScheme()
-
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return err
-	}
-
-	baseRepo, err := opts.BaseRepo()
-	if err != nil {
-		return err
-	}
-
-	issue, err := shared.FindIssueOrPR(httpClient, baseRepo, opts.IssueNumber, []string{"id", "number", "title"})
-	if err != nil {
-		return err
-	}
-	if issue.IsPullRequest() {
-		return fmt.Errorf("issue %s#%d is a pull request and cannot be deleted", ghrepo.FullName(baseRepo), issue.Number)
-	}
-
-	// When executed in an interactive shell, require confirmation, unless
-	// already provided. Otherwise skip confirmation.
-	if opts.IO.CanPrompt() && !opts.Confirmed {
-		cs := opts.IO.ColorScheme()
-		fmt.Printf("%s Deleted issues cannot be recovered.\n", cs.WarningIcon())
-		err := opts.Prompter.ConfirmDeletion(fmt.Sprintf("%d", issue.Number))
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := apiDelete(httpClient, baseRepo, issue.ID); err != nil {
-		return err
-	}
-
-	if opts.IO.IsStdoutTTY() {
-		fmt.Fprintf(opts.IO.ErrOut, "%s Deleted issue %s#%d (%s).\n", cs.Red("✔"), ghrepo.FullName(baseRepo), issue.Number, issue.Title)
-	}
-
-	return nil
-}
-
-func apiDelete(httpClient *http.Client, repo ghrepo.Interface, issueID string) error {
-	var mutation struct {
-		DeleteIssue struct {
-			Repository struct {
-				ID githubv4.ID
-			}
-		} `graphql:"deleteIssue(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.DeleteIssueInput{
-			IssueID: issueID,
-		},
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-	return gql.Mutate(repo.RepoHost(), "IssueDelete", &mutation, variables)
+	return api.NotSupportedError("deleting an issue is not supported with REST")
 }

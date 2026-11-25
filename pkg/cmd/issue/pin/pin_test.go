@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -20,33 +21,17 @@ func TestNewCmdPin(t *testing.T) {
 
 func TestPinRun(t *testing.T) {
 	tests := []struct {
-		name       string
-		tty        bool
-		opts       *PinOptions
-		httpStubs  func(*httpmock.Registry)
-		wantStdout string
-		wantStderr string
+		name      string
+		tty       bool
+		opts      *PinOptions
+		httpStubs func(*httpmock.Registry)
+		wantErr   error
 	}{
 		{
-			name: "pin issue",
-			tty:  true,
-			opts: &PinOptions{IssueNumber: 20},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/20"),
-					httpmock.StringResponse(`{ "node_id": "ISSUE-ID", "number": 20, "title": "Issue Title"}`),
-				)
-				reg.Register(
-					httpmock.GraphQL(`mutation IssuePin\b`),
-					httpmock.GraphQLMutation(`{"id": "ISSUE-ID"}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, inputs["issueId"], "ISSUE-ID")
-						},
-					),
-				)
-			},
-			wantStdout: "",
-			wantStderr: "✓ Pinned issue OWNER/REPO#20 (Issue Title)\n",
+			name:    "pin issue",
+			tty:     true,
+			opts:    &PinOptions{IssueNumber: 20},
+			wantErr: api.ErrNotSupported,
 		},
 	}
 	for _, tt := range tests {
@@ -58,7 +43,7 @@ func TestPinRun(t *testing.T) {
 			return &http.Client{Transport: reg}, nil
 		}
 
-		ios, _, stdout, stderr := iostreams.Test()
+		ios, _, _, _ := iostreams.Test()
 		ios.SetStdinTTY(tt.tty)
 		ios.SetStdoutTTY(tt.tty)
 		tt.opts.IO = ios
@@ -74,9 +59,7 @@ func TestPinRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			defer reg.Verify(t)
 			err := pinRun(tt.opts)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.wantStdout, stdout.String())
-			assert.Equal(t, tt.wantStderr, stderr.String())
+			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 }

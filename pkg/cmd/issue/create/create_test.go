@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/attachments"
 	"github.com/cli/cli/v2/internal/browser"
 	"github.com/cli/cli/v2/internal/config"
@@ -522,15 +523,12 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true
 					}`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }
-					`, func(inputs map[string]any) {
-						assert.Equal(t, "title", inputs["title"])
-						assert.Equal(t, "body", inputs["body"])
-					}))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+						func(inputs map[string]any) {
+							assert.Equal(t, "title", inputs["title"])
+							assert.Equal(t, "body", inputs["body"])
+						}))
 			},
 			opts: CreateOptions{
 				Detector:         &fd.EnabledDetectorMock{},
@@ -553,15 +551,12 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }
-					`, func(inputs map[string]any) {
-						assert.Equal(t, "title", inputs["title"])
-						assert.Equal(t, "from editor ![shot](https://github.com/user-attachments/assets/AAA)", inputs["body"])
-					}))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+						func(inputs map[string]any) {
+							assert.Equal(t, "title", inputs["title"])
+							assert.Equal(t, "from editor ![shot](https://github.com/user-attachments/assets/AAA)", inputs["body"])
+						}))
 			},
 			opts: CreateOptions{
 				Detector:   &fd.EnabledDetectorMock{},
@@ -593,15 +588,12 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/bug_report.md"),
 					httpmock.StringResponse(`{"content": "---\nname: Bug report\ntitle: \"bug: \"\n---\nDoes not work :(("}`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-		{ "data": { "createIssue": { "issue": {
-			"URL": "https://github.com/OWNER/REPO/issues/12"
-		} } } }
-	`, func(inputs map[string]any) {
-						assert.Equal(t, "bug: ", inputs["title"])
-						assert.Equal(t, "Does not work :((", inputs["body"])
-					}))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+						func(inputs map[string]any) {
+							assert.Equal(t, "bug: ", inputs["title"])
+							assert.Equal(t, "Does not work :((", inputs["body"])
+						}))
 			},
 			opts: CreateOptions{
 				Detector:         &fd.EnabledDetectorMock{},
@@ -613,97 +605,17 @@ func Test_createRun(t *testing.T) {
 			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
 		},
 		{
-			name: "interactive prompts with actor assignee display names when actors available",
+			name: "interactive prompts with user assignee logins",
 			opts: CreateOptions{
 				Interactive: true,
 				Detector:    &fd.EnabledDetectorMock{},
-				Title:       "test `gh issue create` actor assignees",
-				Body:        "Actor assignees allow users and bots to be assigned to issues",
-			},
-			promptStubs: func(_ *testing.T, pm *prompter.PrompterMock) {
-				firstConfirmSubmission := true
-				pm.InputFunc = func(message, defaultValue string) (string, error) {
-					switch message {
-					default:
-						return "", fmt.Errorf("unexpected input prompt: %s", message)
-					}
-				}
-				pm.MultiSelectFunc = func(message string, defaults []string, options []string) ([]int, error) {
-					switch message {
-					case "What would you like to add?":
-						return prompter.IndexesFor(options, "Assignees")
-					default:
-						return nil, fmt.Errorf("unexpected multi-select prompt: %s", message)
-					}
-				}
-				pm.MultiSelectWithSearchFunc = func(message, searchPrompt string, defaults, persistentOptions []string, searchFunc func(string) prompter.MultiSelectSearchResult) ([]string, error) {
-					switch message {
-					case "Assignees":
-						return []string{"copilot-swe-agent", "MonaLisa"}, nil
-					default:
-						return nil, fmt.Errorf("unexpected multi-select-with-search prompt: %s", message)
-					}
-				}
-				pm.SelectFunc = func(message, defaultValue string, options []string) (int, error) {
-					switch message {
-					case "What's next?":
-						if firstConfirmSubmission {
-							firstConfirmSubmission = false
-							return prompter.IndexFor(options, "Add metadata")
-						}
-						return prompter.IndexFor(options, "Submit")
-					default:
-						return 0, fmt.Errorf("unexpected select prompt: %s", message)
-					}
-				}
-			},
-			httpStubs: func(_ *testing.T, r *httpmock.Registry) {
-				r.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO"),
-					httpmock.StringResponse(`{
-						"node_id": "REPOID",
-						"has_issues": true,
-						"permissions": { "push": true }
-					}`))
-				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"id": "ISSUEID",
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }
-					`, func(inputs map[string]any) {
-						if v, ok := inputs["assigneeIds"]; ok {
-							t.Errorf("did not expect assigneeIds: %v", v)
-						}
-					}))
-				r.Register(
-					httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "replaceActorsForAssignable": { "__typename": "" } } }
-					`, func(inputs map[string]any) {
-						assert.Equal(t, "ISSUEID", inputs["assignableId"])
-						assert.Equal(t, []any{"copilot-swe-agent[bot]", "MonaLisa"}, inputs["actorLogins"])
-					}))
-			},
-			wantsStdout: "https://github.com/OWNER/REPO/issues/12\n",
-			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
-		},
-		{
-			name: "interactive prompts with user assignee logins when actors unavailable",
-			opts: CreateOptions{
-				Interactive: true,
-				Detector:    &fd.DisabledDetectorMock{},
 				Title:       "test `gh issue create` user assignees",
-				Body:        "User assignees allow only users to be assigned to issues",
+				Body:        "User assignees allow users to be assigned to issues via REST",
 			},
 			promptStubs: func(_ *testing.T, pm *prompter.PrompterMock) {
 				firstConfirmSubmission := true
 				pm.InputFunc = func(message, defaultValue string) (string, error) {
-					switch message {
-					default:
-						return "", fmt.Errorf("unexpected input prompt: %s", message)
-					}
+					return "", fmt.Errorf("unexpected input prompt: %s", message)
 				}
 				pm.MultiSelectFunc = func(message string, defaults []string, options []string) ([]int, error) {
 					switch message {
@@ -743,14 +655,11 @@ func Test_createRun(t *testing.T) {
 						{ "login": "MonaLisa", "node_id": "MONAID" }
 					]`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }
-					`, func(inputs map[string]any) {
-						assert.Equal(t, []any{"HUBOTID", "MONAID"}, inputs["assigneeIds"])
-					}))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+						func(inputs map[string]any) {
+							assert.ElementsMatch(t, []any{"hubot", "MonaLisa"}, inputs["assignees"])
+						}))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/12\n",
 			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
@@ -771,12 +680,8 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true
 					}`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"id": "ISSUE_ID_123",
-							"URL": "https://github.com/OWNER/REPO/issues/123"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 123, "number": 123, "html_url": "https://github.com/OWNER/REPO/issues/123"}`))
 				r.Register(
 					httpmock.REST("GET", "orgs/OWNER/issue-types"),
 					httpmock.StringResponse(`[
@@ -785,12 +690,10 @@ func Test_createRun(t *testing.T) {
 						{ "node_id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
 					]`))
 				r.Register(
-					httpmock.GraphQL(`mutation UpdateIssueIssueType\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "updateIssueIssueType": { "issue": { "id": "ISSUE_ID_123" } } } }`,
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/123"),
+					httpmock.RESTPayload(200, `{"id": 123, "number": 123}`,
 						func(inputs map[string]any) {
-							assert.Equal(t, "ISSUE_ID_123", inputs["issueId"])
-							assert.Equal(t, "IT_1", inputs["issueTypeId"])
+							assert.Equal(t, "Bug", inputs["type"])
 						}))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/123\n",
@@ -824,7 +727,6 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true,
 						"permissions": { "push": true }
 					}`))
-				// Issue types are fetched up front to power the interactive prompt.
 				r.Register(
 					httpmock.REST("GET", "orgs/OWNER/issue-types"),
 					httpmock.StringResponse(`[
@@ -833,20 +735,13 @@ func Test_createRun(t *testing.T) {
 						{ "node_id": "IT_3", "name": "Task", "description": "", "color": "e4e669" }
 					]`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"id": "ISSUE_ID_123",
-							"URL": "https://github.com/OWNER/REPO/issues/123"
-						} } } }`))
-				// Selected ID is reused without re-fetching the types list.
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 123, "number": 123, "html_url": "https://github.com/OWNER/REPO/issues/123"}`))
 				r.Register(
-					httpmock.GraphQL(`mutation UpdateIssueIssueType\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "updateIssueIssueType": { "issue": { "id": "ISSUE_ID_123" } } } }`,
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/123"),
+					httpmock.RESTPayload(200, `{"id": 123, "number": 123}`,
 						func(inputs map[string]any) {
-							assert.Equal(t, "ISSUE_ID_123", inputs["issueId"])
-							assert.Equal(t, "IT_2", inputs["issueTypeId"])
+							assert.Equal(t, "Feature", inputs["type"])
 						}))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/123\n",
@@ -868,12 +763,8 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true
 					}`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"id": "ISSUE_ID_123",
-							"URL": "https://github.com/OWNER/REPO/issues/123"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 123, "number": 123, "html_url": "https://github.com/OWNER/REPO/issues/123"}`))
 				r.Register(
 					httpmock.REST("GET", "orgs/OWNER/issue-types"),
 					httpmock.StringResponse(`[
@@ -900,23 +791,17 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true
 					}`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"id": "ISSUE_ID_123",
-							"URL": "https://github.com/OWNER/REPO/issues/123"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 123, "number": 123, "html_url": "https://github.com/OWNER/REPO/issues/123"}`))
 				r.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/100"),
-					httpmock.StringResponse(`{ "node_id": "PARENT_ID_100", "number": 100 }`))
+					httpmock.StringResponse(`{ "id": 1000, "node_id": "PARENT_ID_100", "number": 100 }`))
 				r.Register(
-					httpmock.GraphQL(`mutation AddSubIssue\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "addSubIssue": { "issue": { "id": "PARENT_ID_100" } } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/issues/100/sub_issues"),
+					httpmock.RESTPayload(201, `{}`,
 						func(inputs map[string]any) {
-							assert.Equal(t, "PARENT_ID_100", inputs["issueId"])
-							assert.Equal(t, "ISSUE_ID_123", inputs["subIssueId"])
-							assert.Equal(t, false, inputs["replaceParent"])
+							assert.Equal(t, float64(123), inputs["sub_issue_id"])
+							assert.Equal(t, false, inputs["replace_parent"])
 						}))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/123\n",
@@ -939,48 +824,42 @@ func Test_createRun(t *testing.T) {
 						"has_issues": true
 					}`))
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"id": "ISSUE_ID_123",
-							"URL": "https://github.com/OWNER/REPO/issues/123"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 123, "number": 123, "html_url": "https://github.com/OWNER/REPO/issues/123"}`))
 				r.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/200"),
-					httpmock.StringResponse(`{ "node_id": "BLOCKER_ID_200", "number": 200 }`))
+					httpmock.StringResponse(`{ "id": 2000, "node_id": "BLOCKER_ID_200", "number": 200 }`))
 				r.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/201"),
-					httpmock.StringResponse(`{ "node_id": "BLOCKER_ID_201", "number": 201 }`))
+					httpmock.StringResponse(`{ "id": 2001, "node_id": "BLOCKER_ID_201", "number": 201 }`))
 				r.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/300"),
-					httpmock.StringResponse(`{ "node_id": "BLOCKED_ID_300", "number": 300 }`))
+					httpmock.StringResponse(`{ "id": 3000, "node_id": "BLOCKED_ID_300", "number": 300 }`))
 				r.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/301"),
-					httpmock.StringResponse(`{ "node_id": "BLOCKED_ID_301", "number": 301 }`))
-				// AddBlockedBy mutations, routed by their inputs so they
-				// also don't depend on parallel ordering.
+					httpmock.StringResponse(`{ "id": 3001, "node_id": "BLOCKED_ID_301", "number": 301 }`))
 				// --blocked-by N: this issue is blocked by N
 				r.Register(
-					httpmock.GraphQLMutationMatcher(`mutation AddBlockedBy\b`, func(input map[string]any) bool {
-						return input["issueId"] == "ISSUE_ID_123" && input["blockingIssueId"] == "BLOCKER_ID_200"
+					restJSONMatcher("POST", "repos/OWNER/REPO/issues/123/dependencies/blocked_by", func(input map[string]any) bool {
+						return input["issue_id"] == float64(2000)
 					}),
-					httpmock.StringResponse(`{ "data": { "addBlockedBy": { "issue": { "id": "ISSUE_ID_123" } } } }`))
+					httpmock.StatusStringResponse(201, `{}`))
 				r.Register(
-					httpmock.GraphQLMutationMatcher(`mutation AddBlockedBy\b`, func(input map[string]any) bool {
-						return input["issueId"] == "ISSUE_ID_123" && input["blockingIssueId"] == "BLOCKER_ID_201"
+					restJSONMatcher("POST", "repos/OWNER/REPO/issues/123/dependencies/blocked_by", func(input map[string]any) bool {
+						return input["issue_id"] == float64(2001)
 					}),
-					httpmock.StringResponse(`{ "data": { "addBlockedBy": { "issue": { "id": "ISSUE_ID_123" } } } }`))
-				// --blocking N: N is blocked by this issue (args swapped)
+					httpmock.StatusStringResponse(201, `{}`))
+				// --blocking N: N is blocked by this issue
 				r.Register(
-					httpmock.GraphQLMutationMatcher(`mutation AddBlockedBy\b`, func(input map[string]any) bool {
-						return input["issueId"] == "BLOCKED_ID_300" && input["blockingIssueId"] == "ISSUE_ID_123"
-					}),
-					httpmock.StringResponse(`{ "data": { "addBlockedBy": { "issue": { "id": "BLOCKED_ID_300" } } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues/300/dependencies/blocked_by"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, float64(123), inputs["issue_id"])
+					}))
 				r.Register(
-					httpmock.GraphQLMutationMatcher(`mutation AddBlockedBy\b`, func(input map[string]any) bool {
-						return input["issueId"] == "BLOCKED_ID_301" && input["blockingIssueId"] == "ISSUE_ID_123"
-					}),
-					httpmock.StringResponse(`{ "data": { "addBlockedBy": { "issue": { "id": "BLOCKED_ID_301" } } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues/301/dependencies/blocked_by"),
+					httpmock.RESTPayload(201, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, float64(123), inputs["issue_id"])
+					}))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/123\n",
 			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
@@ -1004,11 +883,8 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
 						func(inputs map[string]any) {
 							assert.Equal(t, "a body\n\n![shot](https://github.com/user-attachments/assets/AAA)", inputs["body"])
 						}))
@@ -1036,11 +912,8 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUpload(r, 1234, "diagram.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
 						func(inputs map[string]any) {
 							assert.Equal(t, "the plan ![diagram](https://github.com/user-attachments/assets/AAA)", inputs["body"])
 						}))
@@ -1068,11 +941,8 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUpload(r, 4321, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/12\n",
 			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
@@ -1135,7 +1005,7 @@ func Test_createRun(t *testing.T) {
 						"permissions": { "push": true }
 					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 404, `{ "message": "Not Found" }`)
-				r.Exclude(t, httpmock.GraphQL(`mutation IssueCreate\b`))
+				r.Exclude(t, httpmock.REST("POST", "repos/OWNER/REPO/issues"))
 			},
 			wantsErr: "could not upload ./shot.png: attaching files requires write access to the repository",
 		},
@@ -1159,11 +1029,8 @@ func Test_createRun(t *testing.T) {
 				attachments.StubUpload(r, 1234, "first.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				attachments.StubUpload(r, 1234, "second.png", 404, `{ "message": "Not Found" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
 						func(inputs map[string]any) {
 							assert.Equal(t, "a body\n\n![first](https://github.com/user-attachments/assets/AAA)", inputs["body"])
 						}))
@@ -1191,10 +1058,10 @@ func Test_createRun(t *testing.T) {
 				attachments.StubUpload(r, 1234, "first.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				attachments.StubUpload(r, 1234, "second.png", 404, `{ "message": "Not Found" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`{ "errors": [{ "message": "the create failed" }] }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StatusJSONResponse(500, map[string]string{"message": "the create failed"}))
 			},
-			wantsErr:       "could not upload ./second.png: attaching files requires write access to the repository\nGraphQL: the create failed",
+			wantsErr:       "could not upload ./second.png: attaching files requires write access to the repository\nHTTP 500: the create failed (https://api.github.com/repos/OWNER/REPO/issues)",
 			wantOperations: &attachments.UploadResult{AppendOperations: 1},
 		},
 		{
@@ -1216,7 +1083,7 @@ func Test_createRun(t *testing.T) {
 						"permissions": { "push": true }
 					}`))
 				r.Exclude(t, httpmock.REST("POST", "user-attachments/assets"))
-				r.Exclude(t, httpmock.GraphQL(`mutation IssueCreate\b`))
+				r.Exclude(t, httpmock.REST("POST", "repos/OWNER/REPO/issues"))
 			},
 			wantsErr: "cannot embed a video as a reference-style image: ./clip.mp4",
 		},
@@ -1240,11 +1107,8 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUploadToHost(t, r, "uploads.acme.ghe.com", 1234, "shot.png", 200, `{ "url": "https://acme.ghe.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.GraphQLMutation(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://acme.ghe.com/OWNER/REPO/issues/12"
-						} } } }`,
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://acme.ghe.com/OWNER/REPO/issues/12"}`,
 						func(inputs map[string]any) {
 							assert.Equal(t, "a body\n\n![shot](https://acme.ghe.com/user-attachments/assets/AAA)", inputs["body"])
 						}))
@@ -1283,11 +1147,8 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/12\n",
 			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
@@ -1338,11 +1199,8 @@ func Test_createRun(t *testing.T) {
 					}`))
 				attachments.StubUpload(r, 1234, "shot.png", 200, `{ "url": "https://github.com/user-attachments/assets/AAA" }`)
 				r.Register(
-					httpmock.GraphQL(`mutation IssueCreate\b`),
-					httpmock.StringResponse(`
-						{ "data": { "createIssue": { "issue": {
-							"URL": "https://github.com/OWNER/REPO/issues/12"
-						} } } }`))
+					httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+					httpmock.StringResponse(`{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`))
 			},
 			wantsStdout: "https://github.com/OWNER/REPO/issues/12\n",
 			wantsStderr: "\nCreating issue in OWNER/REPO\n\n",
@@ -1410,6 +1268,24 @@ func Test_createRun(t *testing.T) {
 	}
 }
 
+func restJSONMatcher(method, path string, match func(map[string]any) bool) httpmock.Matcher {
+	return func(req *http.Request) bool {
+		if !httpmock.REST(method, path)(req) || req.Body == nil {
+			return false
+		}
+		b, err := io.ReadAll(req.Body)
+		if err != nil {
+			return false
+		}
+		req.Body = io.NopCloser(bytes.NewReader(b))
+		var data map[string]any
+		if err := json.Unmarshal(b, &data); err != nil {
+			return false
+		}
+		return match(data)
+	}
+}
+
 /*** LEGACY TESTS ***/
 func runCommand(rt http.RoundTripper, isTTY bool, cli string, pm *prompter.PrompterMock) (*test.CmdOut, error) {
 	return runCommandWithRootDirOverridden(rt, isTTY, cli, "", pm)
@@ -1473,15 +1349,11 @@ func TestIssueCreate(t *testing.T) {
 		}`),
 	)
 	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-				{ "data": { "createIssue": { "issue": {
-					"URL": "https://github.com/OWNER/REPO/issues/12"
-				} } } }`,
+		httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+		httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
 			func(inputs map[string]any) {
-				assert.Equal(t, inputs["repositoryId"], "REPOID")
-				assert.Equal(t, inputs["title"], "hello")
-				assert.Equal(t, inputs["body"], "cash rules everything around me")
+				assert.Equal(t, "hello", inputs["title"])
+				assert.Equal(t, "cash rules everything around me", inputs["body"])
 			}),
 	)
 
@@ -1511,16 +1383,13 @@ func TestIssueCreate_recover(t *testing.T) {
 			{ "name": "bug", "node_id": "BUGID" }
 		]`))
 	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "createIssue": { "issue": {
-			"URL": "https://github.com/OWNER/REPO/issues/12"
-		} } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "recovered title", inputs["title"])
-			assert.Equal(t, "recovered body", inputs["body"])
-			assert.Equal(t, []any{"BUGID", "TODOID"}, inputs["labelIds"])
-		}))
+		httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+		httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+			func(inputs map[string]any) {
+				assert.Equal(t, "recovered title", inputs["title"])
+				assert.Equal(t, "recovered body", inputs["body"])
+				assert.Equal(t, []any{"bug", "TODO"}, inputs["labels"])
+			}))
 
 	pm := &prompter.PrompterMock{}
 	pm.InputFunc = func(p, d string) (string, error) {
@@ -1595,15 +1464,11 @@ func TestIssueCreate_nonLegacyTemplate(t *testing.T) {
 		httpmock.REST("GET", "repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE/feature.md"),
 		httpmock.StringResponse(`{"content": "---\nname: Submit a request\n---\nI have a suggestion for an enhancement"}`))
 	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-			{ "data": { "createIssue": { "issue": {
-				"URL": "https://github.com/OWNER/REPO/issues/12"
-			} } } }`,
+		httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+		httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
 			func(inputs map[string]any) {
-				assert.Equal(t, inputs["repositoryId"], "REPOID")
-				assert.Equal(t, inputs["title"], "hello")
-				assert.Equal(t, inputs["body"], "I have a suggestion for an enhancement")
+				assert.Equal(t, "hello", inputs["title"])
+				assert.Equal(t, "I have a suggestion for an enhancement", inputs["body"])
 			}),
 	)
 
@@ -1699,44 +1564,17 @@ func TestIssueCreate_metadata(t *testing.T) {
 			{ "title": "Big One.oh", "node_id": "BIGONEID", "number": 2 }
 		]`))
 	http.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
-		httpmock.StringResponse(`[
-			{ "name": "Cleanup", "node_id": "CLEANUPID" },
-			{ "name": "Roadmap", "node_id": "ROADMAPID" }
-		]`))
-	http.Register(
-		httpmock.REST("GET", "orgs/OWNER/projects"),
-		httpmock.StatusStringResponse(404, ""))
-	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "createIssue": { "issue": {
-			"id": "NEWISSUEID",
-			"URL": "https://github.com/OWNER/REPO/issues/12"
-		} } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "TITLE", inputs["title"])
-			assert.Equal(t, "BODY", inputs["body"])
-			if v, ok := inputs["assigneeIds"]; ok {
-				t.Errorf("did not expect assigneeIds: %v", v)
-			}
-			assert.Equal(t, []any{"BUGID", "TODOID"}, inputs["labelIds"])
-			assert.Equal(t, []any{"ROADMAPID"}, inputs["projectIds"])
-			assert.Equal(t, "BIGONEID", inputs["milestoneId"])
-			assert.NotContains(t, inputs, "userIds")
-			assert.NotContains(t, inputs, "teamIds")
-			assert.NotContains(t, inputs, "projectV2Ids")
-		}))
-	http.Register(
-		httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "replaceActorsForAssignable": { "__typename": "" } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "NEWISSUEID", inputs["assignableId"])
-			assert.Equal(t, []any{"monalisa"}, inputs["actorLogins"])
-		}))
+		httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+		httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+			func(inputs map[string]any) {
+				assert.Equal(t, "TITLE", inputs["title"])
+				assert.Equal(t, "BODY", inputs["body"])
+				assert.Equal(t, []any{"monalisa"}, inputs["assignees"])
+				assert.Equal(t, []any{"bug", "TODO"}, inputs["labels"])
+				assert.Equal(t, float64(2), inputs["milestone"])
+			}))
 
-	output, err := runCommand(http, true, `-t TITLE -b BODY -a monalisa -l bug -l todo -p roadmap -m 'big one.oh'`, nil)
+	output, err := runCommand(http, true, `-t TITLE -b BODY -a monalisa -l bug -l todo -m 'big one.oh'`, nil)
 	if err != nil {
 		t.Errorf("error running command `issue create`: %v", err)
 	}
@@ -1777,27 +1615,13 @@ func TestIssueCreate_AtMeAssignee(t *testing.T) {
 			"has_issues": true
 		}`))
 	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "createIssue": { "issue": {
-			"id": "NEWISSUEID",
-			"URL": "https://github.com/OWNER/REPO/issues/12"
-		} } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "hello", inputs["title"])
-			assert.Equal(t, "cash rules everything around me", inputs["body"])
-			if v, ok := inputs["assigneeIds"]; ok {
-				t.Errorf("did not expect assigneeIds: %v", v)
-			}
-		}))
-	http.Register(
-		httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "replaceActorsForAssignable": { "__typename": "" } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "NEWISSUEID", inputs["assignableId"])
-			assert.Equal(t, []any{"MonaLisa", "someoneelse"}, inputs["actorLogins"])
-		}))
+		httpmock.REST("POST", "repos/OWNER/REPO/issues"),
+		httpmock.RESTPayload(201, `{"id": 12, "number": 12, "html_url": "https://github.com/OWNER/REPO/issues/12"}`,
+			func(inputs map[string]any) {
+				assert.Equal(t, "hello", inputs["title"])
+				assert.Equal(t, "cash rules everything around me", inputs["body"])
+				assert.ElementsMatch(t, []any{"MonaLisa", "someoneelse"}, inputs["assignees"])
+			}))
 
 	output, err := runCommand(http, true, `-a @me -a someoneelse -t hello -b "cash rules everything around me"`, nil)
 	if err != nil {
@@ -1817,126 +1641,52 @@ func TestIssueCreate_AtCopilotAssignee(t *testing.T) {
 			"node_id": "REPOID",
 			"has_issues": true
 		}`))
-	http.Register(
-		httpmock.GraphQL(`mutation IssueCreate\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "createIssue": { "issue": {
-			"id": "NEWISSUEID",
-			"URL": "https://github.com/OWNER/REPO/issues/12"
-		} } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "hello", inputs["title"])
-			assert.Equal(t, "cash rules everything around me", inputs["body"])
-			if v, ok := inputs["assigneeIds"]; ok {
-				t.Errorf("did not expect assigneeIds: %v", v)
-			}
-		}))
-	http.Register(
-		httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`),
-		httpmock.GraphQLMutation(`
-		{ "data": { "replaceActorsForAssignable": { "__typename": "" } } }
-	`, func(inputs map[string]any) {
-			assert.Equal(t, "NEWISSUEID", inputs["assignableId"])
-			assert.Equal(t, []any{"copilot-swe-agent[bot]"}, inputs["actorLogins"])
-		}))
 
-	output, err := runCommand(http, true, `-a @copilot -t hello -b "cash rules everything around me"`, nil)
-	if err != nil {
-		t.Errorf("error running command `issue create`: %v", err)
-	}
-
-	assert.Equal(t, "https://github.com/OWNER/REPO/issues/12\n", output.String())
+	_, err := runCommand(http, true, `-a @copilot -t hello -b "cash rules everything around me"`, nil)
+	require.ErrorIs(t, err, api.ErrNotSupported)
 }
 
-func TestIssueCreate_projectsV2(t *testing.T) {
+func TestIssueCreate_projectsUnsupported(t *testing.T) {
 	http := &httpmock.Registry{}
 	defer http.Verify(t)
 
 	http.StubIssueRepoInfoResponse("OWNER", "REPO")
-	http.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/projects"),
-		httpmock.StringResponse(`[]`))
-	http.Register(
-		httpmock.REST("GET", "orgs/OWNER/projects"),
-		httpmock.StringResponse(`[]`))
 
 	_, err := runCommand(http, true, `-t TITLE -b BODY -p roadmapv2`, nil)
-	assert.EqualError(t, err, "could not add to project: 'roadmapv2' not found")
+	require.ErrorIs(t, err, api.ErrNotSupported)
 }
 
 // TODO projectsV1Deprecation
 // Remove this test.
 func TestProjectsV1Deprecation(t *testing.T) {
 
-	t.Run("non-interactive submission", func(t *testing.T) {
-		t.Run("when projects v1 is supported, queries for it", func(t *testing.T) {
-			ios, _, _, _ := iostreams.Test()
+	t.Run("non-interactive submission rejects projects without querying projects", func(t *testing.T) {
+		ios, _, _, _ := iostreams.Test()
 
-			reg := &httpmock.Registry{}
-			reg.StubIssueRepoInfoResponse("OWNER", "REPO")
-			reg.Register(
-				// ( is required to avoid matching projectsV2
-				httpmock.REST("GET", "repos/OWNER/REPO/projects"),
-				// Simulate a GraphQL error to early exit the test.
-				httpmock.StatusStringResponse(500, ""),
-			)
+		reg := &httpmock.Registry{}
+		reg.StubIssueRepoInfoResponse("OWNER", "REPO")
+		reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
 
-			_, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
+		_, cmdTeardown := run.Stub()
+		defer cmdTeardown(t)
 
-			// Ignore the error because we have no way to really stub it without
-			// fully stubbing a GQL error structure in the request body.
-			_ = createRun(&CreateOptions{
-				IO: ios,
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				BaseRepo: func() (ghrepo.Interface, error) {
-					return ghrepo.New("OWNER", "REPO"), nil
-				},
+		err := createRun(&CreateOptions{
+			IO: ios,
+			HttpClient: func() (*http.Client, error) {
+				return &http.Client{Transport: reg}, nil
+			},
+			BaseRepo: func() (ghrepo.Interface, error) {
+				return ghrepo.New("OWNER", "REPO"), nil
+			},
 
-				Detector: &fd.EnabledDetectorMock{},
-				Title:    "Test Title",
-				Body:     "Test Body",
-				// Required to force a lookup of projects
-				Projects: []string{"Project"},
-			})
-
-			// Verify that our request contained projects
-			reg.Verify(t)
+			Detector: &fd.EnabledDetectorMock{},
+			Title:    "Test Title",
+			Body:     "Test Body",
+			Projects: []string{"Project"},
 		})
 
-		t.Run("when projects v1 is not supported, does not query for it", func(t *testing.T) {
-			ios, _, _, _ := iostreams.Test()
-
-			reg := &httpmock.Registry{}
-			reg.StubIssueRepoInfoResponse("OWNER", "REPO")
-			// ( is required to avoid matching projectsV2
-			reg.Exclude(t, httpmock.REST("GET", "repos/OWNER/REPO/projects"))
-
-			_, cmdTeardown := run.Stub()
-			defer cmdTeardown(t)
-
-			// Ignore the error because we're not really interested in it.
-			_ = createRun(&CreateOptions{
-				IO: ios,
-				HttpClient: func() (*http.Client, error) {
-					return &http.Client{Transport: reg}, nil
-				},
-				BaseRepo: func() (ghrepo.Interface, error) {
-					return ghrepo.New("OWNER", "REPO"), nil
-				},
-
-				Detector: &fd.DisabledDetectorMock{},
-				Title:    "Test Title",
-				Body:     "Test Body",
-				// Required to force a lookup of projects
-				Projects: []string{"Project"},
-			})
-
-			// Verify that our request contained projectCards
-			reg.Verify(t)
-		})
+		require.ErrorIs(t, err, api.ErrNotSupported)
+		reg.Verify(t)
 	})
 
 	t.Run("web mode", func(t *testing.T) {

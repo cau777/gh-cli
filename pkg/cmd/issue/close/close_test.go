@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/pkg/cmd/issue/argparsetest"
 	"github.com/cli/cli/v2/pkg/cmdutil"
@@ -130,10 +131,11 @@ func TestCloseRun(t *testing.T) {
 					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation IssueClose\b`),
-					httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/13"),
+					httpmock.RESTPayload(200, `{"id": 13, "number": 13}`,
 						func(inputs map[string]any) {
-							assert.Equal(t, "THE-ID", inputs["issueId"])
+							assert.Equal(t, "closed", inputs["state"])
+							assert.Nil(t, inputs["state_reason"])
 						}),
 				)
 			},
@@ -158,10 +160,10 @@ func TestCloseRun(t *testing.T) {
 						}),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation IssueClose\b`),
-					httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/13"),
+					httpmock.RESTPayload(200, `{"id": 13, "number": 13}`,
 						func(inputs map[string]any) {
-							assert.Equal(t, "THE-ID", inputs["issueId"])
+							assert.Equal(t, "closed", inputs["state"])
 						}),
 				)
 			},
@@ -179,12 +181,12 @@ func TestCloseRun(t *testing.T) {
 					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation IssueClose\b`),
-					httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/13"),
+					httpmock.RESTPayload(200, `{"id": 13, "number": 13}`,
 						func(inputs map[string]any) {
 							assert.Equal(t, 2, len(inputs))
-							assert.Equal(t, "THE-ID", inputs["issueId"])
-							assert.Equal(t, "NOT_PLANNED", inputs["stateReason"])
+							assert.Equal(t, "closed", inputs["state"])
+							assert.Equal(t, "not_planned", inputs["state_reason"])
 						}),
 				)
 			},
@@ -202,93 +204,25 @@ func TestCloseRun(t *testing.T) {
 					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
 				)
 				reg.Register(
-					httpmock.GraphQL(`mutation IssueClose\b`),
-					httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
+					httpmock.REST("PATCH", "repos/OWNER/REPO/issues/13"),
+					httpmock.RESTPayload(200, `{"id": 13, "number": 13}`,
 						func(inputs map[string]any) {
 							assert.Equal(t, 2, len(inputs))
-							assert.Equal(t, "THE-ID", inputs["issueId"])
-							assert.Equal(t, "DUPLICATE", inputs["stateReason"])
+							assert.Equal(t, "closed", inputs["state"])
+							assert.Equal(t, "duplicate", inputs["state_reason"])
 						}),
 				)
 			},
 			wantStderr: "✓ Closed issue OWNER/REPO#13 (The title of the issue)\n",
 		},
 		{
-			name: "close issue as duplicate of another issue",
+			name: "close issue as duplicate of another issue is unsupported",
 			opts: &CloseOptions{
 				IssueNumber: 13,
 				DuplicateOf: "99",
 			},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-				)
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/99"),
-					httpmock.StringResponse(`{ "node_id": "DUPLICATE-ID", "number": 99}`),
-				)
-				reg.Register(
-					httpmock.GraphQL(`mutation IssueClose\b`),
-					httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, 3, len(inputs))
-							assert.Equal(t, "THE-ID", inputs["issueId"])
-							assert.Equal(t, "DUPLICATE", inputs["stateReason"])
-							assert.Equal(t, "DUPLICATE-ID", inputs["duplicateIssueId"])
-						}),
-				)
-			},
-			wantStderr: "✓ Closed issue OWNER/REPO#13 (The title of the issue)\n",
-		},
-		{
-			name: "duplicate of cannot point to same issue",
-			opts: &CloseOptions{
-				IssueNumber: 13,
-				DuplicateOf: "13",
-			},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-				)
-			},
 			wantErr: true,
-			errMsg:  "`--duplicate-of` cannot reference the current issue",
-		},
-		{
-			name: "duplicate of must reference an issue",
-			opts: &CloseOptions{
-				IssueNumber: 13,
-				DuplicateOf: "99",
-			},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-				)
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/99"),
-					httpmock.StringResponse(`{ "node_id": "PULL-ID", "number": 99, "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/99"}}`),
-				)
-			},
-			wantErr: true,
-			errMsg:  "`--duplicate-of` must reference an issue",
-		},
-		{
-			name: "duplicate of with invalid format",
-			opts: &CloseOptions{
-				IssueNumber: 13,
-				DuplicateOf: "not-an-issue",
-			},
-			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-					httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-				)
-			},
-			wantErr: true,
-			errMsg:  "invalid value for `--duplicate-of`: invalid issue format: \"not-an-issue\"",
+			errMsg:  api.NotSupportedError("marking an issue as a duplicate of a specific issue is not supported with REST").Error(),
 		},
 		{
 			name: "issue already closed",

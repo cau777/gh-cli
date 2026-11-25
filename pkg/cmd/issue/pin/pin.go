@@ -1,7 +1,6 @@
 package pin
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/MakeNowJust/heredoc"
@@ -11,7 +10,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -80,54 +78,5 @@ func NewCmdPin(f *cmdutil.Factory, runF func(*PinOptions) error) *cobra.Command 
 }
 
 func pinRun(opts *PinOptions) error {
-	cs := opts.IO.ColorScheme()
-
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return err
-	}
-
-	baseRepo, err := opts.BaseRepo()
-	if err != nil {
-		return err
-	}
-
-	issue, err := shared.FindIssueOrPR(httpClient, baseRepo, opts.IssueNumber, []string{"id", "number", "title", "isPinned"})
-	if err != nil {
-		return err
-	}
-
-	if issue.IsPinned {
-		fmt.Fprintf(opts.IO.ErrOut, "%s Issue %s#%d (%s) is already pinned\n", cs.Yellow("!"), ghrepo.FullName(baseRepo), issue.Number, issue.Title)
-		return nil
-	}
-
-	err = pinIssue(httpClient, baseRepo, issue)
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(opts.IO.ErrOut, "%s Pinned issue %s#%d (%s)\n", cs.SuccessIcon(), ghrepo.FullName(baseRepo), issue.Number, issue.Title)
-
-	return nil
-}
-
-func pinIssue(httpClient *http.Client, repo ghrepo.Interface, issue *api.Issue) error {
-	var mutation struct {
-		PinIssue struct {
-			Issue struct {
-				ID githubv4.ID
-			}
-		} `graphql:"pinIssue(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.PinIssueInput{
-			IssueID: issue.ID,
-		},
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-
-	return gql.Mutate(repo.RepoHost(), "IssuePin", &mutation, variables)
+	return api.NotSupportedError("pinning an issue is not supported with REST")
 }

@@ -1,17 +1,18 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/safeurl"
-	"github.com/shurcooL/githubv4"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -78,6 +79,7 @@ type IssueType struct {
 // LinkedIssue represents a related issue (parent, sub-issue, or relationship target).
 type LinkedIssue struct {
 	ID         string `json:"id"`
+	DatabaseID int64  `json:"databaseId,omitempty"`
 	Number     int    `json:"number"`
 	Title      string `json:"title"`
 	URL        string `json:"url"`
@@ -327,70 +329,51 @@ func (a CommentAuthor) DisplayName() string {
 	return actorDisplayName("", a.Login, "")
 }
 
-// IssueCreate creates an issue in a GitHub repository
-func IssueCreate(client *Client, repo *Repository, params map[string]any) (*Issue, error) {
-	query := `
-	mutation IssueCreate($input: CreateIssueInput!) {
-		createIssue(input: $input) {
-			issue {
-				id
-				url
-			}
-		}
-	}`
-
-	inputParams := map[string]any{
-		"repositoryId": repo.ID,
-	}
-	for key, val := range params {
-		switch key {
-		case "assigneeIds", "body", "issueTemplate", "labelIds", "milestoneId", "projectIds", "repositoryId", "title":
-			inputParams[key] = val
-		case "projectV2Ids", "assigneeLogins":
-			// handled after issue creation
-		default:
-			return nil, fmt.Errorf("invalid IssueCreate mutation parameter %s", key)
-		}
-	}
-	variables := map[string]any{
-		"input": inputParams,
-	}
-
-	result := struct {
-		CreateIssue struct {
-			Issue Issue
-		}
-	}{}
-
-	err := client.GraphQL(repo.RepoHost(), query, variables, &result)
+// IssueCreate creates an issue in a GitHub repository via REST.
+func IssueCreate(client *Client, repo ghrepo.Interface, params map[string]any) (*Issue, error) {
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues")
 	if err != nil {
 		return nil, err
 	}
-	issue := &result.CreateIssue.Issue
 
-	// Assign users using login-based mutation when ApiActorsSupported is true (github.com).
-	if assigneeLogins, ok := params["assigneeLogins"].([]string); ok && len(assigneeLogins) > 0 {
-		err := ReplaceActorsForAssignableByLogin(client, repo, issue.ID, assigneeLogins)
-		if err != nil {
-			return issue, err
+	reqBody := map[string]any{}
+	for key, val := range params {
+		switch key {
+		case "title", "body":
+			reqBody[key] = val
+		case "assigneeLogins":
+			if logins, ok := val.([]string); ok && len(logins) > 0 {
+				reqBody["assignees"] = logins
+			}
+		case "labelNames":
+			if names, ok := val.([]string); ok && len(names) > 0 {
+				reqBody["labels"] = names
+			}
+		case "milestoneNumber":
+			if num, ok := val.(int); ok && num > 0 {
+				reqBody["milestone"] = num
+			}
+		case "type":
+			if t, ok := val.(string); ok && t != "" {
+				reqBody["type"] = t
+			}
+		case "issueTemplate":
+			// REST POST /repos/{owner}/{repo}/issues does not accept issueTemplate.
+		default:
+			return nil, fmt.Errorf("invalid IssueCreate parameter %s", key)
 		}
 	}
 
-	// projectV2 parameters aren't supported in the `createIssue` mutation,
-	// so add them after the issue has been created.
-	projectV2Ids, ok := params["projectV2Ids"].([]string)
-	if ok {
-		projectItems := make(map[string]string, len(projectV2Ids))
-		for _, p := range projectV2Ids {
-			projectItems[p] = issue.ID
-		}
-		err = UpdateProjectV2Items(client, repo, projectItems, nil)
-		if err != nil {
-			return issue, err
-		}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
 	}
 
-	return issue, nil
+	var res restIssue
+	if err := client.REST(repo.RepoHost(), http.MethodPost, path.String(), bytes.NewReader(bodyBytes), &res); err != nil {
+		return nil, err
+	}
+	return res.toIssue(), nil
 }
 
 type IssueStatusOptions struct {
@@ -489,220 +472,168 @@ func (i Issue) RepositoryViewerPermission() string {
 	return i.Repository.ViewerPermission
 }
 
-// UpdateIssueIssueType sets or clears the issue type on an issue. Pass an
-// empty issueTypeID to clear the issue type.
-func UpdateIssueIssueType(client *Client, hostname string, issueID string, issueTypeID string) error {
-	type UpdateIssueIssueTypeInput struct {
-		IssueID     githubv4.ID  `json:"issueId"`
-		IssueTypeID *githubv4.ID `json:"issueTypeId"`
-	}
-
-	var mutation struct {
-		UpdateIssueIssueType struct {
-			Issue struct {
-				ID string
-			}
-		} `graphql:"updateIssueIssueType(input: $input)"`
-	}
-
-	var typeID *githubv4.ID
-	if issueTypeID != "" {
-		id := githubv4.ID(issueTypeID)
-		typeID = &id
-	}
-
-	variables := map[string]any{
-		"input": UpdateIssueIssueTypeInput{
-			IssueID:     githubv4.ID(issueID),
-			IssueTypeID: typeID,
-		},
-	}
-
-	return client.Mutate(hostname, "UpdateIssueIssueType", &mutation, variables)
+// IssueRef identifies an issue for REST relationship endpoints.
+type IssueRef struct {
+	Repo       ghrepo.Interface
+	Number     int
+	DatabaseID int64
+	NodeID     string
 }
 
-// AddSubIssue adds a sub-issue to a parent issue.
-func AddSubIssue(client *Client, hostname string, parentID string, subIssueID string, replaceParent bool) error {
-	type AddSubIssueInput struct {
-		IssueID       githubv4.ID      `json:"issueId"`
-		SubIssueID    githubv4.ID      `json:"subIssueId"`
-		ReplaceParent githubv4.Boolean `json:"replaceParent"`
+// UpdateIssueIssueType sets or clears the issue type on an issue via REST. Pass
+// an empty issueTypeName to clear the issue type.
+func UpdateIssueIssueType(client *Client, repo ghrepo.Interface, number int, issueTypeName string) error {
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(number))
+	if err != nil {
+		return err
 	}
-
-	var mutation struct {
-		AddSubIssue struct {
-			Issue struct {
-				ID string
-			}
-		} `graphql:"addSubIssue(input: $input)"`
+	var typeVal any
+	if issueTypeName != "" {
+		typeVal = issueTypeName
 	}
-
-	variables := map[string]any{
-		"input": AddSubIssueInput{
-			IssueID:       githubv4.ID(parentID),
-			SubIssueID:    githubv4.ID(subIssueID),
-			ReplaceParent: githubv4.Boolean(replaceParent),
-		},
+	bodyBytes, err := json.Marshal(map[string]any{
+		"type": typeVal,
+	})
+	if err != nil {
+		return err
 	}
-
-	return client.Mutate(hostname, "AddSubIssue", &mutation, variables)
+	return client.REST(repo.RepoHost(), http.MethodPatch, p.String(), bytes.NewReader(bodyBytes), nil)
 }
 
-// RemoveSubIssue removes a sub-issue from a parent issue.
-func RemoveSubIssue(client *Client, hostname string, parentID string, subIssueID string) error {
-	type RemoveSubIssueInput struct {
-		IssueID    githubv4.ID `json:"issueId"`
-		SubIssueID githubv4.ID `json:"subIssueId"`
+// AddSubIssue adds a sub-issue to a parent issue via REST.
+func AddSubIssue(client *Client, repo ghrepo.Interface, parentNumber int, subIssueDatabaseID int64, replaceParent bool) error {
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(parentNumber), "sub_issues")
+	if err != nil {
+		return err
 	}
-
-	var mutation struct {
-		RemoveSubIssue struct {
-			Issue struct {
-				ID string
-			}
-		} `graphql:"removeSubIssue(input: $input)"`
+	bodyBytes, err := json.Marshal(map[string]any{
+		"sub_issue_id":   subIssueDatabaseID,
+		"replace_parent": replaceParent,
+	})
+	if err != nil {
+		return err
 	}
-
-	variables := map[string]any{
-		"input": RemoveSubIssueInput{
-			IssueID:    githubv4.ID(parentID),
-			SubIssueID: githubv4.ID(subIssueID),
-		},
-	}
-
-	return client.Mutate(hostname, "RemoveSubIssue", &mutation, variables)
+	return client.REST(repo.RepoHost(), http.MethodPost, p.String(), bytes.NewReader(bodyBytes), nil)
 }
 
-// AddBlockedBy marks an issue as blocked by another issue.
-func AddBlockedBy(client *Client, hostname string, issueID string, blockingIssueID string) error {
-	type AddBlockedByInput struct {
-		IssueID         githubv4.ID `json:"issueId"`
-		BlockingIssueID githubv4.ID `json:"blockingIssueId"`
+// RemoveSubIssue removes a sub-issue from a parent issue via REST.
+func RemoveSubIssue(client *Client, repo ghrepo.Interface, parentNumber int, subIssueDatabaseID int64) error {
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(parentNumber), "sub_issue")
+	if err != nil {
+		return err
 	}
-
-	var mutation struct {
-		AddBlockedBy struct {
-			Issue struct {
-				ID string
-			}
-		} `graphql:"addBlockedBy(input: $input)"`
+	bodyBytes, err := json.Marshal(map[string]any{
+		"sub_issue_id": subIssueDatabaseID,
+	})
+	if err != nil {
+		return err
 	}
-
-	variables := map[string]any{
-		"input": AddBlockedByInput{
-			IssueID:         githubv4.ID(issueID),
-			BlockingIssueID: githubv4.ID(blockingIssueID),
-		},
-	}
-
-	return client.Mutate(hostname, "AddBlockedBy", &mutation, variables)
+	return client.REST(repo.RepoHost(), http.MethodDelete, p.String(), bytes.NewReader(bodyBytes), nil)
 }
 
-// RemoveBlockedBy removes a "blocked by" relationship between two issues.
-func RemoveBlockedBy(client *Client, hostname string, issueID string, blockingIssueID string) error {
-	type RemoveBlockedByInput struct {
-		IssueID         githubv4.ID `json:"issueId"`
-		BlockingIssueID githubv4.ID `json:"blockingIssueId"`
+// AddBlockedBy marks an issue as blocked by another issue via REST.
+func AddBlockedBy(client *Client, repo ghrepo.Interface, issueNumber int, blockingDatabaseID int64) error {
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(issueNumber), "dependencies", "blocked_by")
+	if err != nil {
+		return err
 	}
-
-	var mutation struct {
-		RemoveBlockedBy struct {
-			Issue struct {
-				ID string
-			}
-		} `graphql:"removeBlockedBy(input: $input)"`
+	bodyBytes, err := json.Marshal(map[string]any{
+		"issue_id": blockingDatabaseID,
+	})
+	if err != nil {
+		return err
 	}
-
-	variables := map[string]any{
-		"input": RemoveBlockedByInput{
-			IssueID:         githubv4.ID(issueID),
-			BlockingIssueID: githubv4.ID(blockingIssueID),
-		},
-	}
-
-	return client.Mutate(hostname, "RemoveBlockedBy", &mutation, variables)
+	return client.REST(repo.RepoHost(), http.MethodPost, p.String(), bytes.NewReader(bodyBytes), nil)
 }
 
-// DeferredUpdateIssueOptions updates an issue with mutations unsupported by the
-// standard issue update mutations. All ID fields are node IDs.
+// RemoveBlockedBy removes a "blocked by" relationship between two issues via REST.
+func RemoveBlockedBy(client *Client, repo ghrepo.Interface, issueNumber int, blockingDatabaseID int64) error {
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(issueNumber), "dependencies", "blocked_by", strconv.FormatInt(blockingDatabaseID, 10))
+	if err != nil {
+		return err
+	}
+	return client.REST(repo.RepoHost(), http.MethodDelete, p.String(), nil, nil)
+}
+
+// DeferredUpdateIssueOptions updates an issue with REST calls for issue type and
+// parent/sub-issue/dependency relationships.
 type DeferredUpdateIssueOptions struct {
-	IssueID  string
-	Hostname string
+	Repo            ghrepo.Interface
+	IssueNumber     int
+	IssueDatabaseID int64
 
-	IssueTypeID     string
+	IssueTypeName   string
 	RemoveIssueType bool
 
-	ParentID              string
+	Parent                *IssueRef
 	ReplaceExistingParent bool
-	RemoveParentID        string
+	RemoveParent          *IssueRef
 
-	AddSubIssueIDs    []string
-	RemoveSubIssueIDs []string
+	AddSubIssues    []IssueRef
+	RemoveSubIssues []IssueRef
 
-	AddBlockedByIDs    []string
-	RemoveBlockedByIDs []string
+	AddBlockedBy    []IssueRef
+	RemoveBlockedBy []IssueRef
 
-	// AddBlockingIDs / RemoveBlockingIDs name issues that this issue
-	// blocks. They are applied via the addBlockedBy / removeBlockedBy
-	// mutations with the arguments swapped.
-	AddBlockingIDs    []string
-	RemoveBlockingIDs []string
+	// AddBlocking / RemoveBlocking name issues that this issue blocks.
+	// They are applied via the blocked_by endpoints with the arguments swapped.
+	AddBlocking    []IssueRef
+	RemoveBlocking []IssueRef
 }
 
-// DeferredUpdateIssue runs issue mutations described by opts in
-// parallel and returns any failures as a single joined error so a single
-// failure does not abort the rest.
+// DeferredUpdateIssue runs issue REST updates described by opts in parallel and
+// returns any failures as a single joined error so a single failure does not
+// abort the rest.
 func DeferredUpdateIssue(client *Client, opts DeferredUpdateIssueOptions) error {
 	var mutations []func() error
 
-	if opts.IssueTypeID != "" || opts.RemoveIssueType {
+	if opts.IssueTypeName != "" || opts.RemoveIssueType {
 		mutations = append(mutations, func() error {
-			return UpdateIssueIssueType(client, opts.Hostname, opts.IssueID, opts.IssueTypeID)
+			return UpdateIssueIssueType(client, opts.Repo, opts.IssueNumber, opts.IssueTypeName)
 		})
 	}
 
-	if opts.ParentID != "" {
+	if opts.Parent != nil {
 		mutations = append(mutations, func() error {
-			return AddSubIssue(client, opts.Hostname, opts.ParentID, opts.IssueID, opts.ReplaceExistingParent)
+			return AddSubIssue(client, opts.Parent.Repo, opts.Parent.Number, opts.IssueDatabaseID, opts.ReplaceExistingParent)
 		})
-	} else if opts.RemoveParentID != "" {
+	} else if opts.RemoveParent != nil {
 		mutations = append(mutations, func() error {
-			return RemoveSubIssue(client, opts.Hostname, opts.RemoveParentID, opts.IssueID)
-		})
-	}
-
-	for _, id := range opts.AddSubIssueIDs {
-		mutations = append(mutations, func() error {
-			return AddSubIssue(client, opts.Hostname, opts.IssueID, id, true)
-		})
-	}
-	for _, id := range opts.RemoveSubIssueIDs {
-		mutations = append(mutations, func() error {
-			return RemoveSubIssue(client, opts.Hostname, opts.IssueID, id)
+			return RemoveSubIssue(client, opts.RemoveParent.Repo, opts.RemoveParent.Number, opts.IssueDatabaseID)
 		})
 	}
 
-	for _, id := range opts.AddBlockedByIDs {
+	for _, ref := range opts.AddSubIssues {
 		mutations = append(mutations, func() error {
-			return AddBlockedBy(client, opts.Hostname, opts.IssueID, id)
+			return AddSubIssue(client, opts.Repo, opts.IssueNumber, ref.DatabaseID, true)
 		})
 	}
-	for _, id := range opts.RemoveBlockedByIDs {
+	for _, ref := range opts.RemoveSubIssues {
 		mutations = append(mutations, func() error {
-			return RemoveBlockedBy(client, opts.Hostname, opts.IssueID, id)
+			return RemoveSubIssue(client, opts.Repo, opts.IssueNumber, ref.DatabaseID)
 		})
 	}
 
-	for _, id := range opts.AddBlockingIDs {
+	for _, ref := range opts.AddBlockedBy {
 		mutations = append(mutations, func() error {
-			// blocking is the inverse of blocked-by: this issue blocks `id`,
-			// expressed as `id` is blocked by this issue.
-			return AddBlockedBy(client, opts.Hostname, id, opts.IssueID)
+			return AddBlockedBy(client, opts.Repo, opts.IssueNumber, ref.DatabaseID)
 		})
 	}
-	for _, id := range opts.RemoveBlockingIDs {
+	for _, ref := range opts.RemoveBlockedBy {
 		mutations = append(mutations, func() error {
-			return RemoveBlockedBy(client, opts.Hostname, id, opts.IssueID)
+			return RemoveBlockedBy(client, opts.Repo, opts.IssueNumber, ref.DatabaseID)
+		})
+	}
+
+	for _, ref := range opts.AddBlocking {
+		mutations = append(mutations, func() error {
+			// Blocking is the inverse of blocked-by: this issue blocks ref.
+			return AddBlockedBy(client, ref.Repo, ref.Number, opts.IssueDatabaseID)
+		})
+	}
+	for _, ref := range opts.RemoveBlocking {
+		mutations = append(mutations, func() error {
+			return RemoveBlockedBy(client, ref.Repo, ref.Number, opts.IssueDatabaseID)
 		})
 	}
 

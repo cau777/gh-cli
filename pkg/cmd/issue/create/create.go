@@ -15,7 +15,6 @@ import (
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/gh/ghtelemetry"
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/cli/cli/v2/internal/prompter"
 	"github.com/cli/cli/v2/internal/text"
 	issueShared "github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
@@ -240,14 +239,13 @@ func createRun(opts *CreateOptions) (err error) {
 	assigneeSet.AddValues(assignees)
 
 	tb := prShared.IssueMetadataState{
-		Type:               prShared.IssueMetadata,
-		ApiActorsSupported: issueFeatures.ApiActorsSupported, // TODO ApiActorsSupported
-		Assignees:          assigneeSet.ToSlice(),
-		Labels:             opts.Labels,
-		ProjectTitles:      opts.Projects,
-		Milestones:         milestones,
-		Title:              opts.Title,
-		Body:               opts.Body,
+		Type:          prShared.IssueMetadata,
+		Assignees:     assigneeSet.ToSlice(),
+		Labels:        opts.Labels,
+		ProjectTitles: opts.Projects,
+		Milestones:    milestones,
+		Title:         opts.Title,
+		Body:          opts.Body,
 	}
 
 	if opts.RecoverFile != "" {
@@ -388,11 +386,7 @@ func createRun(opts *CreateOptions) (err error) {
 				Repo:      baseRepo,
 				State:     &tb,
 			}
-			var assigneeSearchFunc func(string) prompter.MultiSelectSearchResult
-			if issueFeatures.ApiActorsSupported {
-				assigneeSearchFunc = prShared.RepoAssigneeSearchFunc(apiClient, baseRepo)
-			}
-			err = prShared.MetadataSurvey(opts.Prompter, opts.IO, baseRepo, fetcher, &tb, projectsV1Support, nil, assigneeSearchFunc)
+			err = prShared.MetadataSurvey(opts.Prompter, opts.IO, baseRepo, fetcher, &tb, projectsV1Support, nil, nil)
 			if err != nil {
 				return
 			}
@@ -470,7 +464,7 @@ func createRun(opts *CreateOptions) (err error) {
 		}
 
 		var newIssue *api.Issue
-		newIssue, err = api.IssueCreate(apiClient, repo, params)
+		newIssue, err = api.IssueCreate(apiClient, baseRepo, params)
 		if err != nil {
 			return
 		}
@@ -498,48 +492,46 @@ func generatePreviewURL(apiClient *api.Client, baseRepo ghrepo.Interface, tb prS
 }
 
 // deferredUpdateIssueOptions resolves the user-supplied --type / --parent /
-// --blocked-by / --blocking flags into the IDs that DeferredUpdateIssue
-// expects.
+// --blocked-by / --blocking flags into the REST references and options that
+// DeferredUpdateIssue expects.
 func deferredUpdateIssueOptions(client *api.Client, baseRepo ghrepo.Interface, issue *api.Issue, opts *CreateOptions) (api.DeferredUpdateIssueOptions, error) {
 	updateOpts := api.DeferredUpdateIssueOptions{
-		IssueID:  issue.ID,
-		Hostname: baseRepo.RepoHost(),
+		Repo:            baseRepo,
+		IssueNumber:     issue.Number,
+		IssueDatabaseID: issue.DatabaseID,
 	}
 
 	if opts.IssueType != "" {
-		typeID := opts.issueTypeID
-		if typeID == "" {
-			var err error
-			typeID, err = issueShared.ResolveIssueTypeName(client, baseRepo, opts.IssueType)
-			if err != nil {
+		if opts.issueTypeID == "" {
+			if _, err := issueShared.ResolveIssueTypeName(client, baseRepo, opts.IssueType); err != nil {
 				return api.DeferredUpdateIssueOptions{}, err
 			}
 		}
-		updateOpts.IssueTypeID = typeID
+		updateOpts.IssueTypeName = opts.IssueType
 	}
 
 	if opts.Parent != "" {
-		parentID, err := issueShared.ResolveIssueRef(client, baseRepo, opts.Parent)
+		parentRef, err := issueShared.ResolveIssueRef(client, baseRepo, opts.Parent)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --parent reference %q: %w", opts.Parent, err)
 		}
-		updateOpts.ParentID = parentID
+		updateOpts.Parent = parentRef
 	}
 
 	for _, ref := range opts.BlockedBy {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --blocked-by reference %q: %w", ref, err)
 		}
-		updateOpts.AddBlockedByIDs = append(updateOpts.AddBlockedByIDs, id)
+		updateOpts.AddBlockedBy = append(updateOpts.AddBlockedBy, *resolved)
 	}
 
 	for _, ref := range opts.Blocking {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --blocking reference %q: %w", ref, err)
 		}
-		updateOpts.AddBlockingIDs = append(updateOpts.AddBlockingIDs, id)
+		updateOpts.AddBlocking = append(updateOpts.AddBlocking, *resolved)
 	}
 
 	return updateOpts, nil

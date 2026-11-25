@@ -1,7 +1,6 @@
 package transfer
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/cli/cli/v2/api"
@@ -10,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -67,67 +65,5 @@ func NewCmdTransfer(f *cmdutil.Factory, runF func(*TransferOptions) error) *cobr
 }
 
 func transferRun(opts *TransferOptions) error {
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return err
-	}
-
-	baseRepo, err := opts.BaseRepo()
-	if err != nil {
-		return err
-	}
-
-	issue, err := shared.FindIssueOrPR(httpClient, baseRepo, opts.IssueNumber, []string{"id", "number"})
-	if err != nil {
-		return err
-	}
-	if issue.IsPullRequest() {
-		return fmt.Errorf("issue %s#%d is a pull request and cannot be transferred", ghrepo.FullName(baseRepo), issue.Number)
-	}
-
-	destRepo, err := ghrepo.FromFullNameWithHost(opts.DestRepoSelector, baseRepo.RepoHost())
-	if err != nil {
-		return err
-	}
-
-	url, err := issueTransfer(httpClient, issue.ID, destRepo)
-	if err != nil {
-		return err
-	}
-
-	_, err = fmt.Fprintln(opts.IO.Out, url)
-	return err
-}
-
-func issueTransfer(httpClient *http.Client, issueID string, destRepo ghrepo.Interface) (string, error) {
-	var destinationRepoID string
-	if r, ok := destRepo.(*api.Repository); ok {
-		destinationRepoID = r.ID
-	} else {
-		apiClient := api.NewClientFromHTTP(httpClient)
-		r, err := api.IssueRepoInfo(apiClient, destRepo)
-		if err != nil {
-			return "", err
-		}
-		destinationRepoID = r.ID
-	}
-
-	var mutation struct {
-		TransferIssue struct {
-			Issue struct {
-				URL string
-			}
-		} `graphql:"transferIssue(input: $input)"`
-	}
-
-	variables := map[string]any{
-		"input": githubv4.TransferIssueInput{
-			IssueID:      issueID,
-			RepositoryID: destinationRepoID,
-		},
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-	err := gql.Mutate(destRepo.RepoHost(), "IssueTransfer", &mutation, variables)
-	return mutation.TransferIssue.Issue.URL, err
+	return api.NotSupportedError("transferring an issue is not supported with REST")
 }

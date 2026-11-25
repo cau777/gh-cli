@@ -309,38 +309,21 @@ func editRun(opts *EditOptions) error {
 		}
 	}
 
+	if editable.Projects.Edited {
+		return api.NotSupportedError("editing projects on an issue is not supported with REST")
+	}
 	if opts.Detector == nil {
 		cachedClient := api.NewCachedHTTPClient(httpClient, time.Hour*24)
 		opts.Detector = fd.NewDetector(cachedClient, baseRepo.RepoHost())
 	}
 
-	issueFeatures, err := opts.Detector.IssueFeatures()
-	if err != nil {
-		return err
-	}
-
 	lookupFields := []string{"id", "number", "title", "body", "url"}
 	if editable.Assignees.Edited {
-		// TODO ApiActorsSupported
-		if issueFeatures.ApiActorsSupported {
-			editable.ApiActorsSupported = true
-			lookupFields = append(lookupFields, "assignedActors")
-		} else {
-			lookupFields = append(lookupFields, "assignees")
-		}
+		editable.ApiActorsSupported = false
+		lookupFields = append(lookupFields, "assignees")
 	}
 	if editable.Labels.Edited {
 		lookupFields = append(lookupFields, "labels")
-	}
-	if editable.Projects.Edited {
-		// TODO projectsV1Deprecation
-		// Remove this section as we should no longer add projectCards
-		projectsV1Support := opts.Detector.ProjectsV1()
-		if projectsV1Support == gh.ProjectsV1Supported {
-			lookupFields = append(lookupFields, "projectCards")
-		}
-
-		lookupFields = append(lookupFields, "projectItems")
 	}
 	if editable.Milestone.Edited {
 		lookupFields = append(lookupFields, "milestone")
@@ -375,12 +358,6 @@ func editRun(opts *EditOptions) error {
 	// Fetch editable shared fields once for all issues.
 	apiClient := api.NewClientFromHTTP(httpClient)
 
-	// Wire up search function for assignees when ApiActorsSupported is available.
-	// Interactive mode only supports a single issue, so we use its ID for the search query.
-	if issueFeatures.ApiActorsSupported && opts.Interactive && len(issues) == 1 {
-		editable.AssigneeSearchFunc = prShared.AssigneeSearchFunc(apiClient, baseRepo, issues[0].ID)
-	}
-
 	opts.IO.StartProgressIndicatorWithLabel("Fetching repository information")
 	err = opts.FetchOptions(apiClient, baseRepo, &editable, opts.Detector.ProjectsV1())
 	opts.IO.StopProgressIndicator()
@@ -388,11 +365,11 @@ func editRun(opts *EditOptions) error {
 		return err
 	}
 
-	// Resolve issue type ID before uploading in non-interactive mode.
-	// Interactive mode resolves after the survey sets the value.
-	var issueTypeID string
+	// Validate issue type name before uploading in non-interactive mode.
+	// Interactive mode validates after the survey sets the value.
+	var issueTypeName string
 	if !opts.Interactive {
-		issueTypeID, err = lookupIssueTypeID(&editable)
+		issueTypeName, err = lookupIssueTypeName(&editable)
 		if err != nil {
 			return err
 		}
@@ -474,7 +451,7 @@ func editRun(opts *EditOptions) error {
 			if err != nil {
 				return err
 			}
-			issueTypeID, err = lookupIssueTypeID(&editable)
+			issueTypeName, err = lookupIssueTypeName(&editable)
 			if err != nil {
 				return err
 			}
@@ -484,12 +461,18 @@ func editRun(opts *EditOptions) error {
 		go func(issue *api.Issue) {
 			defer g.Done()
 
-			if err := prShared.UpdateIssue(httpClient, baseRepo, issue.ID, issue.IsPullRequest(), editable); err != nil {
-				failedIssueChan <- fmt.Sprintf("failed to update %s: %s", issue.URL, err)
+			var updateErr error
+			if issue.IsPullRequest() {
+				updateErr = prShared.UpdatePullRequestREST(httpClient, baseRepo, issue.Number, editable)
+			} else {
+				updateErr = prShared.UpdateIssueREST(httpClient, baseRepo, issue.Number, editable)
+			}
+			if updateErr != nil {
+				failedIssueChan <- fmt.Sprintf("failed to update %s: %s", issue.URL, updateErr)
 				return
 			}
 
-			mutations, err := deferredUpdateIssueOptions(apiClient, baseRepo, issue, opts, issueTypeID)
+			mutations, err := deferredUpdateIssueOptions(apiClient, baseRepo, issue, opts, issueTypeName)
 			if err != nil {
 				failedIssueChan <- fmt.Sprintf("failed to update %s: %s", issue.URL, err)
 				return
@@ -547,85 +530,96 @@ func editRun(opts *EditOptions) error {
 	return uploadErr
 }
 
-// lookupIssueTypeID resolves the chosen issue type to its node ID using the
-// map populated by FetchOptions.
-func lookupIssueTypeID(editable *prShared.Editable) (string, error) {
+// lookupIssueTypeName validates the chosen issue type using the map populated by
+// FetchOptions and returns the canonical type name.
+func lookupIssueTypeName(editable *prShared.Editable) (string, error) {
 	if !editable.IssueType.Edited || editable.IssueType.Value == "" {
 		return "", nil
 	}
-	id, ok := editable.IssueTypeNameToID[editable.IssueType.Value]
-	if !ok {
+	if _, ok := editable.IssueTypeNameToID[editable.IssueType.Value]; !ok {
 		return "", fmt.Errorf("type %q not found; available types: %s",
 			editable.IssueType.Value,
 			strings.Join(editable.IssueType.Options, ", "))
 	}
-	return id, nil
+	return editable.IssueType.Value, nil
 }
 
-func deferredUpdateIssueOptions(client *api.Client, baseRepo ghrepo.Interface, issue *api.Issue, editOpts *EditOptions, issueTypeID string) (api.DeferredUpdateIssueOptions, error) {
+func deferredUpdateIssueOptions(client *api.Client, baseRepo ghrepo.Interface, issue *api.Issue, editOpts *EditOptions, issueTypeName string) (api.DeferredUpdateIssueOptions, error) {
 	updateOpts := api.DeferredUpdateIssueOptions{
-		IssueID:               issue.ID,
-		Hostname:              baseRepo.RepoHost(),
-		IssueTypeID:           issueTypeID,
+		Repo:                  baseRepo,
+		IssueNumber:           issue.Number,
+		IssueDatabaseID:       issue.DatabaseID,
+		IssueTypeName:         issueTypeName,
 		RemoveIssueType:       editOpts.RemoveIssueType,
 		ReplaceExistingParent: true,
 	}
 
 	if editOpts.RemoveParent {
 		if issue.Parent != nil {
-			updateOpts.RemoveParentID = issue.Parent.ID
+			parentRepo := baseRepo
+			if issue.Parent.Repository.NameWithOwner != "" {
+				if r, err := ghrepo.FromFullNameWithHost(issue.Parent.Repository.NameWithOwner, baseRepo.RepoHost()); err == nil {
+					parentRepo = r
+				}
+			}
+			updateOpts.RemoveParent = &api.IssueRef{
+				Repo:       parentRepo,
+				Number:     issue.Parent.Number,
+				DatabaseID: issue.Parent.DatabaseID,
+				NodeID:     issue.Parent.ID,
+			}
 		}
 	} else if editOpts.Parent != "" {
-		parentID, err := issueShared.ResolveIssueRef(client, baseRepo, editOpts.Parent)
+		parentRef, err := issueShared.ResolveIssueRef(client, baseRepo, editOpts.Parent)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --parent reference %q: %w", editOpts.Parent, err)
 		}
-		updateOpts.ParentID = parentID
+		updateOpts.Parent = parentRef
 	}
 
 	for _, ref := range editOpts.AddSubIssues {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --add-sub-issue reference %q: %w", ref, err)
 		}
-		updateOpts.AddSubIssueIDs = append(updateOpts.AddSubIssueIDs, id)
+		updateOpts.AddSubIssues = append(updateOpts.AddSubIssues, *resolved)
 	}
 	for _, ref := range editOpts.RemoveSubIssues {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --remove-sub-issue reference %q: %w", ref, err)
 		}
-		updateOpts.RemoveSubIssueIDs = append(updateOpts.RemoveSubIssueIDs, id)
+		updateOpts.RemoveSubIssues = append(updateOpts.RemoveSubIssues, *resolved)
 	}
 
 	for _, ref := range editOpts.AddBlockedBy {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --add-blocked-by reference %q: %w", ref, err)
 		}
-		updateOpts.AddBlockedByIDs = append(updateOpts.AddBlockedByIDs, id)
+		updateOpts.AddBlockedBy = append(updateOpts.AddBlockedBy, *resolved)
 	}
 	for _, ref := range editOpts.RemoveBlockedBy {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --remove-blocked-by reference %q: %w", ref, err)
 		}
-		updateOpts.RemoveBlockedByIDs = append(updateOpts.RemoveBlockedByIDs, id)
+		updateOpts.RemoveBlockedBy = append(updateOpts.RemoveBlockedBy, *resolved)
 	}
 
 	for _, ref := range editOpts.AddBlocking {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --add-blocking reference %q: %w", ref, err)
 		}
-		updateOpts.AddBlockingIDs = append(updateOpts.AddBlockingIDs, id)
+		updateOpts.AddBlocking = append(updateOpts.AddBlocking, *resolved)
 	}
 	for _, ref := range editOpts.RemoveBlocking {
-		id, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
+		resolved, err := issueShared.ResolveIssueRef(client, baseRepo, ref)
 		if err != nil {
 			return api.DeferredUpdateIssueOptions{}, fmt.Errorf("resolving --remove-blocking reference %q: %w", ref, err)
 		}
-		updateOpts.RemoveBlockingIDs = append(updateOpts.RemoveBlockingIDs, id)
+		updateOpts.RemoveBlocking = append(updateOpts.RemoveBlocking, *resolved)
 	}
 
 	return updateOpts, nil

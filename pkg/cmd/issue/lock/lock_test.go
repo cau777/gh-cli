@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -241,12 +240,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 		},
 		{
@@ -263,12 +258,10 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "title": "traverse the library"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.RESTPayload(204, "", func(inputs map[string]any) {
+						assert.Equal(t, "too heated", inputs["lock_reason"])
+					}))
 			},
 			promptStubs: func(t *testing.T, pm *prompter.PrompterMock) {
 				pm.SelectFunc = func(p, d string, opts []string) (int, error) {
@@ -297,12 +290,10 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "title": "traverse the library"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.RESTPayload(204, "", func(inputs map[string]any) {
+						assert.Equal(t, "off-topic", inputs["lock_reason"])
+					}))
 			},
 			wantOut: "✓ Locked as OFF_TOPIC: Issue OWNER/REPO#451 (traverse the library)\n",
 		},
@@ -319,12 +310,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnlockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "unlockLockable": {
-						      "unlockedRecord": {
-						        "locked": false }}}}`))
+					httpmock.REST("DELETE", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 			wantOut: "✓ Unlocked: Issue OWNER/REPO#451 (traverse the library)\n",
 		},
@@ -340,12 +327,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnlockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "unlockLockable": {
-						      "unlockedRecord": {
-						        "locked": false }}}}`))
+					httpmock.REST("DELETE", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 		},
 		{
@@ -361,12 +344,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "title": "traverse the library"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 		},
 		{
@@ -383,19 +362,11 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnlockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "unlockLockable": {
-						      "unlockedRecord": {
-						        "locked": false }}}}`))
+					httpmock.REST("DELETE", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 			promptStubs: func(t *testing.T, pm *prompter.PrompterMock) {
 				pm.ConfirmFunc = func(p string, d bool) (bool, error) {
@@ -436,12 +407,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 		},
 		{
@@ -458,12 +425,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 			promptStubs: func(t *testing.T, pm *prompter.PrompterMock) {
 				pm.SelectFunc = func(p, d string, opts []string) (int, error) {
@@ -490,12 +453,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 			wantOut: "✓ Locked as OFF_TOPIC: Pull request OWNER/REPO#451 (traverse the library)\n",
 		},
@@ -512,12 +471,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 		},
 		{
@@ -532,12 +487,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnlockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "unlockLockable": {
-						      "unlockedRecord": {
-						        "locked": false }}}}`))
+					httpmock.REST("DELETE", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 		},
 		{
@@ -553,12 +504,8 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnlockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "unlockLockable": {
-						      "unlockedRecord": {
-						        "locked": false }}}}`))
+					httpmock.REST("DELETE", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 			wantOut: "✓ Unlocked: Pull request OWNER/REPO#451 (traverse the library)\n",
 		},
@@ -576,19 +523,11 @@ func Test_runLock(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/issues/451"),
 					httpmock.StringResponse(`{"number": 451, "locked": true, "title": "traverse the library", "pull_request": {"url": "https://api.github.com/repos/OWNER/REPO/pulls/451"}}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnlockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "unlockLockable": {
-						      "unlockedRecord": {
-						        "locked": false }}}}`))
+					httpmock.REST("DELETE", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 				reg.Register(
-					httpmock.GraphQL(`mutation LockLockable\b`),
-					httpmock.StringResponse(`
-						{ "data": {
-						    "lockLockable": {
-						      "lockedRecord": {
-						        "locked": true }}}}`))
+					httpmock.REST("PUT", "repos/OWNER/REPO/issues/451/lock"),
+					httpmock.StatusStringResponse(204, ""))
 			},
 			promptStubs: func(t *testing.T, pm *prompter.PrompterMock) {
 				pm.ConfirmFunc = func(p string, d bool) (bool, error) {
@@ -662,9 +601,10 @@ func Test_runLock(t *testing.T) {
 }
 
 func TestReasons(t *testing.T) {
-	assert.Equal(t, len(reasons), len(reasonsApi))
+	assert.Equal(t, len(reasons), len(restReasonsMap))
 
 	for _, reason := range reasons {
-		assert.Equal(t, strings.ToUpper(reason), string(*reasonsMap[reason]))
+		_, ok := restReasonsMap[reason]
+		assert.True(t, ok)
 	}
 }

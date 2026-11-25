@@ -11,19 +11,23 @@
 package lock
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	issueShared "github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -40,23 +44,11 @@ var reasons = []string{"off_topic", "resolved", "spam", "too_heated"}
 
 var reasonsString = strings.Join(reasons, ", ")
 
-var reasonsApi = []githubv4.LockReason{
-	githubv4.LockReasonOffTopic,
-	githubv4.LockReasonResolved,
-	githubv4.LockReasonSpam,
-	githubv4.LockReasonTooHeated,
-}
-
-// If no reason is given (an empty string), reasonsMap will return the nil
-// value, since it is not contained in the map.  This, in turn, sets lock_reason
-// to null in GraphQL.
-var reasonsMap map[string]*githubv4.LockReason
-
-func init() {
-	reasonsMap = make(map[string]*githubv4.LockReason)
-	for i, reason := range reasons {
-		reasonsMap[reason] = &reasonsApi[i]
-	}
+var restReasonsMap = map[string]string{
+	"off_topic":  "off-topic",
+	"resolved":   "resolved",
+	"spam":       "spam",
+	"too_heated": "too heated",
 }
 
 type command struct {
@@ -149,7 +141,7 @@ func NewCmdLock(f *cmdutil.Factory, parentName string, runF func(string, *LockOp
 
 			reasonProvided := cmd.Flags().Changed("reason")
 			if reasonProvided {
-				_, ok := reasonsMap[opts.Reason]
+				_, ok := restReasonsMap[opts.Reason]
 				if !ok {
 					if opts.IO.IsStdoutTTY() {
 						cs := opts.IO.ColorScheme()
@@ -306,44 +298,37 @@ func lockRun(state string, opts *LockOptions) error {
 
 // lockLockable will lock an issue or pull request
 func lockLockable(httpClient *http.Client, repo ghrepo.Interface, lockable *api.Issue, opts *LockOptions) error {
-	var mutation struct {
-		LockLockable struct {
-			LockedRecord struct {
-				Locked bool
-			}
-		} `graphql:"lockLockable(input: $input)"`
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(lockable.Number), "lock")
+	if err != nil {
+		return err
 	}
 
-	variables := map[string]any{
-		"input": githubv4.LockLockableInput{
-			LockableID: lockable.ID,
-			LockReason: reasonsMap[opts.Reason],
-		},
+	var body io.Reader
+	if restReason, ok := restReasonsMap[opts.Reason]; ok && restReason != "" {
+		payload, err := json.Marshal(struct {
+			LockReason string `json:"lock_reason"`
+		}{
+			LockReason: restReason,
+		})
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(payload)
 	}
 
-	gql := api.NewClientFromHTTP(httpClient)
-	return gql.Mutate(repo.RepoHost(), "LockLockable", &mutation, variables)
+	client := api.NewClientFromHTTP(httpClient)
+	return client.REST(repo.RepoHost(), http.MethodPut, p.String(), body, nil)
 }
 
 // unlockLockable will unlock an issue or pull request
 func unlockLockable(httpClient *http.Client, repo ghrepo.Interface, lockable *api.Issue) error {
-
-	var mutation struct {
-		UnlockLockable struct {
-			UnlockedRecord struct {
-				Locked bool
-			}
-		} `graphql:"unlockLockable(input: $input)"`
+	p, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "issues", strconv.Itoa(lockable.Number), "lock")
+	if err != nil {
+		return err
 	}
 
-	variables := map[string]any{
-		"input": githubv4.UnlockLockableInput{
-			LockableID: lockable.ID,
-		},
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-	return gql.Mutate(repo.RepoHost(), "UnlockLockable", &mutation, variables)
+	client := api.NewClientFromHTTP(httpClient)
+	return client.REST(repo.RepoHost(), http.MethodDelete, p.String(), nil, nil)
 }
 
 // relockLockable will unlock then lock an issue or pull request.  A common use

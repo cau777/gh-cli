@@ -71,10 +71,11 @@ func TestIssueReopen(t *testing.T) {
 		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 2, "state": "closed", "title": "The title of the issue"}`),
 	)
 	http.Register(
-		httpmock.GraphQL(`mutation IssueReopen\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
+		httpmock.REST("PATCH", "repos/OWNER/REPO/issues/2"),
+		httpmock.RESTPayload(200, `{"id": 2, "number": 2}`,
 			func(inputs map[string]any) {
-				assert.Equal(t, inputs["issueId"], "THE-ID")
+				assert.Equal(t, "open", inputs["state"])
+				assert.Equal(t, "reopened", inputs["state_reason"])
 			}),
 	)
 
@@ -142,10 +143,11 @@ func TestIssueReopen_withComment(t *testing.T) {
 			}),
 	)
 	http.Register(
-		httpmock.GraphQL(`mutation IssueReopen\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
+		httpmock.REST("PATCH", "repos/OWNER/REPO/issues/2"),
+		httpmock.RESTPayload(200, `{"id": 2, "number": 2}`,
 			func(inputs map[string]any) {
-				assert.Equal(t, inputs["issueId"], "THE-ID")
+				assert.Equal(t, "open", inputs["state"])
+				assert.Equal(t, "reopened", inputs["state_reason"])
 			}),
 	)
 

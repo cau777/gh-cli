@@ -23,6 +23,14 @@ when running in REST-only mode.
 
 - **`gh issue list`, `gh issue view`, `gh issue status` `--json` fields**: Passing any of `projectCards`, `projectItems`, `closedByPullRequestsReferences`, or `isPinned` with `--json` returns `not all features are supported`. Default non-`--json` views omit those fields gracefully.
 - **Comment moderation metadata (`gh issue view`)**: REST issue comment endpoints do not expose `isMinimized` or `minimizedReason`, so minimized-comment badges are not rendered.
+- **`gh issue close --duplicate-of`**: Marking an issue as a duplicate of a specific issue (`duplicateIssueId`) is a GraphQL-only field on `closeIssue` and returns `not all features are supported`. Closing with `--reason duplicate` (`state_reason: "duplicate"`) remains supported via REST.
+- **`gh issue delete`**: GitHub has no REST API endpoint to delete an issue. Returns `not all features are supported`.
+- **`gh issue pin` / `gh issue unpin`**: Pinning and unpinning issues on a repository are GraphQL-only mutations (`pinIssue` / `unpinIssue`). Both return `not all features are supported`.
+- **`gh issue transfer`**: Transferring an issue to another repository is a GraphQL-only mutation (`transferIssue`). Returns `not all features are supported`.
+- **`gh issue develop`**: Creating and listing linked issue branches (`createLinkedBranch` / `linkedBranches`) are GraphQL-only APIs with no GitHub REST equivalent. Returns `not all features are supported`.
+- **`gh issue create --project` / `gh issue edit --add-project` / `--remove-project`**: Projects V2 associations and Projects V1 columns cannot be managed on issues via REST and return `not all features are supported`.
+- **`@copilot` assignee on issues**: Assigning or unassigning Copilot (`copilot` / `@copilot`) on issues relies on GraphQL actor mutations and returns `not all features are supported`.
+- **Interactive assignee metadata on `gh issue create` / `gh issue edit`**: Interactive assignee prompts use static REST metadata (`GET /repos/{owner}/{repo}/assignees`) rather than live GraphQL actor search (`SearchRepoAssignableActors` / `SuggestedAssignableActors`).
 
 ## Repositories & Releases
 

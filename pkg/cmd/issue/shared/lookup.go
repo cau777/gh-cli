@@ -137,23 +137,33 @@ func FindIssueOrPR(httpClient *http.Client, repo ghrepo.Interface, number int, f
 }
 
 // ResolveIssueRef parses an issue reference (number or URL) and returns its
-// node ID. References that point at a different host than baseRepo are
-// rejected because relationship mutations require IDs from the base host.
-func ResolveIssueRef(client *api.Client, baseRepo ghrepo.Interface, ref string) (string, error) {
+// resolved REST reference (repository, issue number, and database ID).
+// References that point at a different host than baseRepo are rejected because
+// relationship endpoints require references on the base host.
+func ResolveIssueRef(client *api.Client, baseRepo ghrepo.Interface, ref string) (*api.IssueRef, error) {
 	number, repo, err := ParseIssueFromArg(ref)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	targetRepo := baseRepo
 	if r, ok := repo.Value(); ok {
 		if r.RepoHost() != baseRepo.RepoHost() {
-			return "", fmt.Errorf("issue reference %q belongs to a different host (%s) than the current repository (%s)", ref, r.RepoHost(), baseRepo.RepoHost())
+			return nil, fmt.Errorf("issue reference %q belongs to a different host (%s) than the current repository (%s)", ref, r.RepoHost(), baseRepo.RepoHost())
 		}
 		targetRepo = r
 	}
 
-	return api.IssueNodeID(client, targetRepo, number)
+	issue, err := api.SingleIssueREST(client, targetRepo, number, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &api.IssueRef{
+		Repo:       targetRepo,
+		Number:     issue.Number,
+		DatabaseID: issue.DatabaseID,
+		NodeID:     issue.ID,
+	}, nil
 }
 
 // ResolveIssueTypeName resolves an issue type name to its node ID by

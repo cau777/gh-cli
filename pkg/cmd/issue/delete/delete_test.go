@@ -2,12 +2,11 @@ package delete
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -68,110 +67,7 @@ func TestIssueDelete(t *testing.T) {
 	httpRegistry := &httpmock.Registry{}
 	defer httpRegistry.Verify(t)
 
-	httpRegistry.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-	)
-	httpRegistry.Register(
-		httpmock.GraphQL(`mutation IssueDelete\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["issueId"], "THE-ID")
-			}),
-	)
-
-	pm := prompter.NewMockPrompter(t)
-	pm.RegisterConfirmDeletion("13", func(_ string) error { return nil })
-
-	output, err := runCommand(httpRegistry, pm, true, "13")
-	if err != nil {
-		t.Fatalf("error running command `issue delete`: %v", err)
-	}
-
-	r := regexp.MustCompile(`Deleted issue OWNER/REPO#13 \(The title of the issue\)`)
-
-	if !r.MatchString(output.Stderr()) {
-		t.Fatalf("output did not match regexp /%s/\n> output\n%q\n", r, output.Stderr())
-	}
-}
-
-func TestIssueDelete_confirm(t *testing.T) {
-	httpRegistry := &httpmock.Registry{}
-	defer httpRegistry.Verify(t)
-
-	httpRegistry.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-	)
-	httpRegistry.Register(
-		httpmock.GraphQL(`mutation IssueDelete\b`),
-		httpmock.GraphQLMutation(`{"id": "THE-ID"}`,
-			func(inputs map[string]any) {
-				assert.Equal(t, inputs["issueId"], "THE-ID")
-			}),
-	)
-
-	output, err := runCommand(httpRegistry, nil, true, "13 --confirm")
-	if err != nil {
-		t.Fatalf("error running command `issue delete`: %v", err)
-	}
-
-	r := regexp.MustCompile(`Deleted issue OWNER/REPO#13 \(The title of the issue\)`)
-
-	if !r.MatchString(output.Stderr()) {
-		t.Fatalf("output did not match regexp /%s/\n> output\n%q\n", r, output.Stderr())
-	}
-}
-
-func TestIssueDelete_cancel(t *testing.T) {
-	httpRegistry := &httpmock.Registry{}
-	defer httpRegistry.Verify(t)
-
-	httpRegistry.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-		httpmock.StringResponse(`{ "node_id": "THE-ID", "number": 13, "title": "The title of the issue"}`),
-	)
-
-	pm := prompter.NewMockPrompter(t)
-	pm.RegisterConfirmDeletion("13", func(_ string) error {
-		return errors.New("You entered 14")
-	})
-
-	_, err := runCommand(httpRegistry, pm, true, "13")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if err.Error() != "You entered 14" {
-		t.Fatalf("got unexpected error '%s'", err)
-	}
-}
-
-func TestIssueDelete_doesNotExist(t *testing.T) {
-	httpRegistry := &httpmock.Registry{}
-	defer httpRegistry.Verify(t)
-
-	httpRegistry.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-		httpmock.StatusJSONResponse(404, map[string]string{"message": "Not Found"}),
-	)
-
-	_, err := runCommand(httpRegistry, nil, true, "13")
-	if err == nil || err.Error() != "HTTP 404: Not Found (https://api.github.com/repos/OWNER/REPO/issues/13)" {
-		t.Errorf("error running command `issue delete`: %v", err)
-	}
-}
-
-func TestIssueDelete_issuesDisabled(t *testing.T) {
-	httpRegistry := &httpmock.Registry{}
-	defer httpRegistry.Verify(t)
-
-	httpRegistry.Register(
-		httpmock.REST("GET", "repos/OWNER/REPO/issues/13"),
-		httpmock.StatusStringResponse(410, `{"message": "Issues are disabled for this repo"}`),
-	)
-
-	_, err := runCommand(httpRegistry, nil, true, "13")
-	if err == nil || err.Error() != "the 'OWNER/REPO' repository has disabled issues" {
-		t.Fatalf("got error: %v", err)
-	}
+	output, err := runCommand(httpRegistry, nil, true, "13")
+	assert.ErrorIs(t, err, api.ErrNotSupported)
+	assert.Equal(t, "", output.Stderr())
 }

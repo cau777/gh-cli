@@ -3,7 +3,6 @@ package shared
 import (
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
@@ -61,16 +60,20 @@ func AddMetadataToIssueParams(client *api.Client, baseRepo ghrepo.Interface, par
 		return nil
 	}
 
-	if tb.Type == PRMetadata {
-		if len(tb.ProjectTitles) > 0 {
-			return api.NotSupportedError("adding a pull request to projects is not supported with REST")
+	if len(tb.ProjectTitles) > 0 {
+		entity := "an issue"
+		if tb.Type == PRMetadata {
+			entity = "a pull request"
 		}
-		for _, a := range tb.Assignees {
-			if strings.EqualFold(a, "@copilot") || a == api.CopilotAssigneeLogin {
-				return api.NotSupportedError("assigning Copilot is not supported with REST")
-			}
+		return api.NotSupportedError(fmt.Sprintf("adding %s to projects is not supported with REST", entity))
+	}
+	for _, a := range tb.Assignees {
+		if strings.EqualFold(a, "@copilot") || a == api.CopilotAssigneeLogin {
+			return api.NotSupportedError("assigning Copilot is not supported with REST")
 		}
+	}
 
+	if tb.Type == PRMetadata {
 		var userReviewers []string
 		var teamReviewers []string
 		for _, r := range tb.Reviewers {
@@ -89,145 +92,40 @@ func AddMetadataToIssueParams(client *api.Client, baseRepo ghrepo.Interface, par
 		if len(teamReviewers) > 0 {
 			params["teamReviewerSlugs"] = teamReviewers
 		}
-		if len(tb.Assignees) > 0 {
-			params["assigneeLogins"] = tb.Assignees
-		}
-
-		needLabels := len(tb.Labels) > 0
-		needMilestones := len(tb.Milestones) > 0
-		if needLabels || needMilestones {
-			if tb.MetadataResult == nil {
-				metadataResult, err := api.RepoMetadata(client, baseRepo, api.RepoMetadataInput{
-					Labels:     needLabels,
-					Milestones: needMilestones,
-				})
-				if err != nil {
-					return err
-				}
-				tb.MetadataResult = metadataResult
-			}
-			if needLabels {
-				labelNames, err := tb.MetadataResult.LabelsToNames(tb.Labels)
-				if err != nil {
-					return fmt.Errorf("could not add label: %w", err)
-				}
-				params["labelNames"] = labelNames
-			}
-			if needMilestones {
-				milestoneNum, err := tb.MetadataResult.MilestoneToNumber(tb.Milestones[0])
-				if err != nil {
-					return fmt.Errorf("could not add to milestone '%s': %w", tb.Milestones[0], err)
-				}
-				params["milestoneNumber"] = milestoneNum
-			}
-		}
-		return nil
 	}
 
-	// TODO ApiActorsSupported
-	// When ApiActorsSupported is true, we use login-based mutation and don't need to resolve reviewer IDs.
-	needReviewerIDs := len(tb.Reviewers) > 0 && !tb.ApiActorsSupported
-
-	// TODO ApiActorsSupported
-	// When ApiActorsSupported is true, we use login-based mutation and don't need to resolve assignee IDs.
-	needAssigneeIDs := len(tb.Assignees) > 0 && !tb.ApiActorsSupported
-
-	// Retrieve minimal information needed to resolve metadata if this was not previously cached from additional metadata survey.
-	if tb.MetadataResult == nil {
-		input := api.RepoMetadataInput{
-			Reviewers: needReviewerIDs,
-			TeamReviewers: needReviewerIDs && slices.ContainsFunc(tb.Reviewers, func(r string) bool {
-				return strings.ContainsRune(r, '/')
-			}),
-			Assignees:  needAssigneeIDs,
-			Labels:     len(tb.Labels) > 0,
-			ProjectsV1: len(tb.ProjectTitles) > 0 && projectV1Support == gh.ProjectsV1Supported,
-			ProjectsV2: len(tb.ProjectTitles) > 0,
-			Milestones: len(tb.Milestones) > 0,
-		}
-
-		metadataResult, err := api.RepoMetadata(client, baseRepo, input)
-		if err != nil {
-			return err
-		}
-		tb.MetadataResult = metadataResult
-	}
-
-	// TODO ApiActorsSupported
-	// When ApiActorsSupported is true (github.com), pass logins directly for use with
-	// ReplaceActorsForAssignable mutation. The ID-based else branch is for GHES compatibility.
-	if tb.ApiActorsSupported {
+	if len(tb.Assignees) > 0 {
 		params["assigneeLogins"] = tb.Assignees
-	} else {
-		assigneeIDs, err := tb.MetadataResult.MembersToIDs(tb.Assignees)
-		if err != nil {
-			return fmt.Errorf("could not assign user: %w", err)
+	}
+
+	needLabels := len(tb.Labels) > 0
+	needMilestones := len(tb.Milestones) > 0
+	if needLabels || needMilestones {
+		if tb.MetadataResult == nil {
+			metadataResult, err := api.RepoMetadata(client, baseRepo, api.RepoMetadataInput{
+				Labels:     needLabels,
+				Milestones: needMilestones,
+			})
+			if err != nil {
+				return err
+			}
+			tb.MetadataResult = metadataResult
 		}
-		params["assigneeIds"] = assigneeIDs
-	}
-
-	labelIDs, err := tb.MetadataResult.LabelsToIDs(tb.Labels)
-	if err != nil {
-		return fmt.Errorf("could not add label: %w", err)
-	}
-	params["labelIds"] = labelIDs
-
-	projectIDs, projectV2IDs, err := tb.MetadataResult.ProjectsTitlesToIDs(tb.ProjectTitles)
-	if err != nil {
-		return fmt.Errorf("could not add to project: %w", err)
-	}
-	params["projectIds"] = projectIDs
-	params["projectV2Ids"] = projectV2IDs
-
-	if len(tb.Milestones) > 0 {
-		milestoneID, err := tb.MetadataResult.MilestoneToID(tb.Milestones[0])
-		if err != nil {
-			return fmt.Errorf("could not add to milestone '%s': %w", tb.Milestones[0], err)
+		if needLabels {
+			labelNames, err := tb.MetadataResult.LabelsToNames(tb.Labels)
+			if err != nil {
+				return fmt.Errorf("could not add label: %w", err)
+			}
+			params["labelNames"] = labelNames
 		}
-		params["milestoneId"] = milestoneID
-	}
-
-	if len(tb.Reviewers) == 0 {
-		return nil
-	}
-
-	var userReviewers []string
-	var botReviewers []string
-	var teamReviewers []string
-	for _, r := range tb.Reviewers {
-		if strings.ContainsRune(r, '/') {
-			teamReviewers = append(teamReviewers, r)
-		} else if r == api.CopilotReviewerLogin {
-			botReviewers = append(botReviewers, r)
-		} else {
-			userReviewers = append(userReviewers, r)
+		if needMilestones {
+			milestoneNum, err := tb.MetadataResult.MilestoneToNumber(tb.Milestones[0])
+			if err != nil {
+				return fmt.Errorf("could not add to milestone '%s': %w", tb.Milestones[0], err)
+			}
+			params["milestoneNumber"] = milestoneNum
 		}
 	}
-
-	// TODO ApiActorsSupported
-	// When ApiActorsSupported is true (github.com), pass logins directly for use with
-	// RequestReviewsByLogin mutation. The ID-based else branch can be removed once
-	// GHES supports requestReviewsByLogin.
-	if tb.ApiActorsSupported {
-		params["userReviewerLogins"] = userReviewers
-		if len(botReviewers) > 0 {
-			params["botReviewerLogins"] = botReviewers
-		}
-		params["teamReviewerSlugs"] = teamReviewers
-	} else {
-		userReviewerIDs, err := tb.MetadataResult.MembersToIDs(userReviewers)
-		if err != nil {
-			return fmt.Errorf("could not request reviewer: %w", err)
-		}
-		params["userReviewerIds"] = userReviewerIDs
-
-		teamReviewerIDs, err := tb.MetadataResult.TeamsToIDs(teamReviewers)
-		if err != nil {
-			return fmt.Errorf("could not request reviewer: %w", err)
-		}
-		params["teamReviewerIds"] = teamReviewerIDs
-	}
-
 	return nil
 }
 

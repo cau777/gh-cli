@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -501,10 +502,8 @@ func CreatePullRequest(client *Client, repo *Repository, params map[string]any) 
 		return nil, NotSupportedError("requesting bot reviewers is not supported with REST")
 	}
 	if logins, ok := params["assigneeLogins"].([]string); ok {
-		for _, login := range logins {
-			if login == CopilotAssigneeLogin {
-				return nil, NotSupportedError("assigning Copilot is not supported with REST")
-			}
+		if slices.Contains(logins, CopilotAssigneeLogin) {
+			return nil, NotSupportedError("assigning Copilot is not supported with REST")
 		}
 	}
 

@@ -377,21 +377,6 @@ func TestRequestHeadersAgainstRealTransport(t *testing.T) {
 	assert.Equal(t, "GitHub CLI v1.2.3", gotReq.Header.Get("User-Agent"))
 }
 
-func TestGraphQLWithHeader(t *testing.T) {
-	reg := &httpmock.Registry{}
-	defer reg.Verify(t)
-	client := newTestClient(reg)
-
-	reg.Register(httpmock.MatchAny, httpmock.StatusStringResponse(200, `{"data": {}}`))
-
-	var response struct{}
-	err := client.GraphQL("github.com", "query{}", nil, &response,
-		WithHeader("Authorization", "token explicit-token"))
-	require.NoError(t, err)
-
-	assert.Equal(t, "token explicit-token", reg.Requests[0].Header.Get("Authorization"))
-}
-
 // TestDoRequestPreservesCheckRedirect pins the difference between Request and DoRequest that
 // motivates DoRequest existing for redirect-sensitive call sites. Request delegates to go-gh,
 // which builds an http.Client of its own from the transport alone, so a redirect policy set on

@@ -859,9 +859,6 @@ func Test_commentRun(t *testing.T) {
 
 		reg := &httpmock.Registry{}
 		defer reg.Verify(t)
-		// An attach run must never look the repository id up on its own.
-		// Excluding the query fails loudly if one is ever reintroduced.
-		reg.Exclude(t, httpmock.GraphQL(`query MapRepositoryNames\b`))
 		if tt.httpStubs != nil {
 			tt.httpStubs(t, reg)
 		}

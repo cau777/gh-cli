@@ -57,69 +57,6 @@ func Test_findNextPage(t *testing.T) {
 	}
 }
 
-func Test_findEndCursor(t *testing.T) {
-	tests := []struct {
-		name string
-		json io.Reader
-		want string
-	}{
-		{
-			name: "blank",
-			json: bytes.NewBufferString(`{}`),
-			want: "",
-		},
-		{
-			name: "unrelated fields",
-			json: bytes.NewBufferString(`{
-				"hasNextPage": true,
-				"endCursor": "THE_END"
-			}`),
-			want: "",
-		},
-		{
-			name: "has next page",
-			json: bytes.NewBufferString(`{
-				"pageInfo": {
-					"hasNextPage": true,
-					"endCursor": "THE_END"
-				}
-			}`),
-			want: "THE_END",
-		},
-		{
-			name: "more pageInfo blocks",
-			json: bytes.NewBufferString(`{
-				"pageInfo": {
-					"hasNextPage": true,
-					"endCursor": "THE_END"
-				},
-				"pageInfo": {
-					"hasNextPage": true,
-					"endCursor": "NOT_THIS"
-				}
-			}`),
-			want: "THE_END",
-		},
-		{
-			name: "no next page",
-			json: bytes.NewBufferString(`{
-				"pageInfo": {
-					"hasNextPage": false,
-					"endCursor": "THE_END"
-				}
-			}`),
-			want: "",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := findEndCursor(tt.json); got != tt.want {
-				t.Errorf("findEndCursor() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_addPerPage(t *testing.T) {
 	type args struct {
 		p       string

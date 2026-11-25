@@ -389,8 +389,8 @@ type restIssueSearchResult struct {
 
 func repoNameWithOwnerFromAPIURL(apiURL string) string {
 	const marker = "/repos/"
-	if idx := strings.Index(apiURL, marker); idx >= 0 {
-		return strings.Trim(apiURL[idx+len(marker):], "/")
+	if _, after, ok := strings.Cut(apiURL, marker); ok {
+		return strings.Trim(after, "/")
 	}
 	parts := strings.Split(strings.Trim(apiURL, "/"), "/")
 	if len(parts) >= 2 {

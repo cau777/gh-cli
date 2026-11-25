@@ -5,79 +5,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
-
-func Test_groupGraphQLVariables(t *testing.T) {
-	tests := []struct {
-		name string
-		args map[string]any
-		want map[string]any
-	}{
-		{
-			name: "empty",
-			args: map[string]any{},
-			want: map[string]any{},
-		},
-		{
-			name: "query only",
-			args: map[string]any{
-				"query": "QUERY",
-			},
-			want: map[string]any{
-				"query": "QUERY",
-			},
-		},
-		{
-			name: "variables only",
-			args: map[string]any{
-				"name": "hubot",
-			},
-			want: map[string]any{
-				"variables": map[string]any{
-					"name": "hubot",
-				},
-			},
-		},
-		{
-			name: "query + variables",
-			args: map[string]any{
-				"query": "QUERY",
-				"name":  "hubot",
-				"power": 9001,
-			},
-			want: map[string]any{
-				"query": "QUERY",
-				"variables": map[string]any{
-					"name":  "hubot",
-					"power": 9001,
-				},
-			},
-		},
-		{
-			name: "query + operationName + variables",
-			args: map[string]any{
-				"query":         "query Q1{} query Q2{}",
-				"operationName": "Q1",
-				"power":         9001,
-			},
-			want: map[string]any{
-				"query":         "query Q1{} query Q2{}",
-				"operationName": "Q1",
-				"variables": map[string]any{
-					"power": 9001,
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := groupGraphQLVariables(tt.args)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
 
 type roundTripper func(*http.Request) (*http.Response, error)
 
@@ -242,44 +170,6 @@ func Test_httpRequest(t *testing.T) {
 				method:  "POST",
 				u:       "https://api.github.com/repos",
 				body:    `{"a":"b"}`,
-				headers: "Accept: */*\r\nContent-Type: application/json; charset=utf-8\r\n",
-			},
-		},
-		{
-			name: "POST GraphQL",
-			args: args{
-				client: &httpClient,
-				host:   "github.com",
-				method: "POST",
-				p:      "graphql",
-				params: map[string]any{
-					"a": "b",
-				},
-				headers: []string{},
-			},
-			wantErr: false,
-			want: expects{
-				method:  "POST",
-				u:       "https://api.github.com/graphql",
-				body:    `{"variables":{"a":"b"}}`,
-				headers: "Accept: */*\r\nContent-Type: application/json; charset=utf-8\r\n",
-			},
-		},
-		{
-			name: "Enterprise GraphQL",
-			args: args{
-				client:  &httpClient,
-				host:    "example.org",
-				method:  "POST",
-				p:       "graphql",
-				params:  map[string]any{},
-				headers: []string{},
-			},
-			wantErr: false,
-			want: expects{
-				method:  "POST",
-				u:       "https://example.org/api/graphql",
-				body:    `{}`,
 				headers: "Accept: */*\r\nContent-Type: application/json; charset=utf-8\r\n",
 			},
 		},

@@ -57,6 +57,7 @@ when running in REST-only mode.
 - **`gh ruleset list`**: REST ruleset summary listings omit individual rule definitions when returned by `/rulesets`, so summary `RULES` counts are `0` when omitted, and `totalCount` reflects fetched rulesets.
 - **`gh status`**: Assignment and review-request searches use REST `/search/issues`, which does not emit partial per-item GraphQL `FORBIDDEN` SAML warnings in 200 responses (HTTP 403 search responses still surface auth warnings).
 - **`gh gist list --include-content`**: REST `GET /gists` summaries omit file contents; when `includeContent` is requested and file contents are absent in the list response, `gh` fetches individual gists via `GET /gists/{id}`.
+- **`gh api graphql`**: Raw GraphQL queries via `gh api graphql` (or `gh api /graphql`) are disabled and return `not all features are supported`.
 
 ## Shared Behavioral Caveats
 

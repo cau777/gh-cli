@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -527,21 +526,6 @@ func Test_apiRun(t *testing.T) {
 			err:    cmdutil.SilentError,
 			stdout: `{"errors": ["ALSO", "FINE"]}`,
 			stderr: "gh: ALSO\nFINE\n",
-			isatty: false,
-		},
-		{
-			name: "GraphQL error",
-			options: ApiOptions{
-				RequestPath: "graphql",
-			},
-			httpResponse: &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(bytes.NewBufferString(`{"errors": [{"message":"AGAIN"}, {"message":"FINE"}]}`)),
-				Header:     http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
-			},
-			err:    cmdutil.SilentError,
-			stdout: `{"errors": [{"message":"AGAIN"}, {"message":"FINE"}]}`,
-			stderr: "gh: AGAIN\nFINE\n",
 			isatty: false,
 		},
 		{
@@ -1087,206 +1071,17 @@ func Test_apiRun_arrayPaginationREST_with_headers(t *testing.T) {
 	assert.Equal(t, "https://api.github.com/repositories/1227/issues?page=3", responses[2].Request.URL.String())
 }
 
-func Test_apiRun_paginationGraphQL(t *testing.T) {
-	ios, _, stdout, stderr := iostreams.Test()
-
-	requestCount := 0
-	responses := []*http.Response{
-		{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{`application/json`}},
-			Body: io.NopCloser(bytes.NewBufferString(heredoc.Doc(`
-			{
-				"data": {
-					"nodes": ["page one"],
-					"pageInfo": {
-						"endCursor": "PAGE1_END",
-						"hasNextPage": true
-					}
-				}
-			}`))),
-		},
-		{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{`application/json`}},
-			Body: io.NopCloser(bytes.NewBufferString(heredoc.Doc(`
-			{
-				"data": {
-					"nodes": ["page two"],
-					"pageInfo": {
-						"endCursor": "PAGE2_END",
-						"hasNextPage": false
-					}
-				}
-			}`))),
-		},
+func Test_apiRun_GraphQLNotSupported(t *testing.T) {
+	for _, p := range []string{"graphql", "/graphql"} {
+		t.Run(p, func(t *testing.T) {
+			ios, _, _, _ := iostreams.Test()
+			err := apiRun(&ApiOptions{
+				IO:          ios,
+				RequestPath: p,
+			})
+			require.ErrorIs(t, err, rootapi.ErrNotSupported)
+		})
 	}
-
-	options := ApiOptions{
-		IO: ios,
-		HttpClient: func(rootapi.HTTPClientOptions) (*http.Client, error) {
-			var tr roundTripper = func(req *http.Request) (*http.Response, error) {
-				resp := responses[requestCount]
-				resp.Request = req
-				requestCount++
-				return resp, nil
-			}
-			return &http.Client{Transport: tr}, nil
-		},
-		Config: func() (gh.Config, error) {
-			return config.NewMockConfig(), nil
-		},
-
-		RawFields:     []string{"foo=bar"},
-		RequestMethod: "POST",
-		RequestPath:   "graphql",
-		Paginate:      true,
-	}
-
-	err := apiRun(&options)
-	require.NoError(t, err)
-
-	assert.Equal(t, heredoc.Doc(`
-	{
-		"data": {
-			"nodes": ["page one"],
-			"pageInfo": {
-				"endCursor": "PAGE1_END",
-				"hasNextPage": true
-			}
-		}
-	}{
-		"data": {
-			"nodes": ["page two"],
-			"pageInfo": {
-				"endCursor": "PAGE2_END",
-				"hasNextPage": false
-			}
-		}
-	}`), stdout.String())
-	assert.Equal(t, "", stderr.String(), "stderr")
-
-	var requestData struct {
-		Variables map[string]any
-	}
-
-	bb, err := io.ReadAll(responses[0].Request.Body)
-	require.NoError(t, err)
-	err = json.Unmarshal(bb, &requestData)
-	require.NoError(t, err)
-	_, hasCursor := requestData.Variables["endCursor"].(string)
-	assert.Equal(t, false, hasCursor)
-
-	bb, err = io.ReadAll(responses[1].Request.Body)
-	require.NoError(t, err)
-	err = json.Unmarshal(bb, &requestData)
-	require.NoError(t, err)
-	endCursor, hasCursor := requestData.Variables["endCursor"].(string)
-	assert.Equal(t, true, hasCursor)
-	assert.Equal(t, "PAGE1_END", endCursor)
-}
-
-func Test_apiRun_paginationGraphQL_slurp(t *testing.T) {
-	ios, _, stdout, stderr := iostreams.Test()
-
-	requestCount := 0
-	responses := []*http.Response{
-		{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{`application/json`}},
-			Body: io.NopCloser(bytes.NewBufferString(heredoc.Doc(`
-			{
-				"data": {
-					"nodes": ["page one"],
-					"pageInfo": {
-						"endCursor": "PAGE1_END",
-						"hasNextPage": true
-					}
-				}
-			}`))),
-		},
-		{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{`application/json`}},
-			Body: io.NopCloser(bytes.NewBufferString(heredoc.Doc(`
-			{
-				"data": {
-					"nodes": ["page two"],
-					"pageInfo": {
-						"endCursor": "PAGE2_END",
-						"hasNextPage": false
-					}
-				}
-			}`))),
-		},
-	}
-
-	options := ApiOptions{
-		IO: ios,
-		HttpClient: func(rootapi.HTTPClientOptions) (*http.Client, error) {
-			var tr roundTripper = func(req *http.Request) (*http.Response, error) {
-				resp := responses[requestCount]
-				resp.Request = req
-				requestCount++
-				return resp, nil
-			}
-			return &http.Client{Transport: tr}, nil
-		},
-		Config: func() (gh.Config, error) {
-			return config.NewMockConfig(), nil
-		},
-
-		RawFields:     []string{"foo=bar"},
-		RequestMethod: "POST",
-		RequestPath:   "graphql",
-		Paginate:      true,
-		Slurp:         true,
-	}
-
-	err := apiRun(&options)
-	require.NoError(t, err)
-
-	assert.JSONEq(t, stdout.String(), `[
-		{
-			"data": {
-				"nodes": ["page one"],
-				"pageInfo": {
-					"endCursor": "PAGE1_END",
-					"hasNextPage": true
-				}
-			}
-		},
-		{
-
-			"data": {
-				"nodes": ["page two"],
-				"pageInfo": {
-					"endCursor": "PAGE2_END",
-					"hasNextPage": false
-				}
-			}
-		}
-	]`)
-	assert.Equal(t, "", stderr.String(), "stderr")
-
-	var requestData struct {
-		Variables map[string]any
-	}
-
-	bb, err := io.ReadAll(responses[0].Request.Body)
-	require.NoError(t, err)
-	err = json.Unmarshal(bb, &requestData)
-	require.NoError(t, err)
-	_, hasCursor := requestData.Variables["endCursor"].(string)
-	assert.Equal(t, false, hasCursor)
-
-	bb, err = io.ReadAll(responses[1].Request.Body)
-	require.NoError(t, err)
-	err = json.Unmarshal(bb, &requestData)
-	require.NoError(t, err)
-	endCursor, hasCursor := requestData.Variables["endCursor"].(string)
-	assert.Equal(t, true, hasCursor)
-	assert.Equal(t, "PAGE1_END", endCursor)
 }
 
 func Test_apiRun_paginated_template(t *testing.T) {
@@ -1297,39 +1092,26 @@ func Test_apiRun_paginated_template(t *testing.T) {
 	responses := []*http.Response{
 		{
 			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{`application/json`}},
-			Body: io.NopCloser(bytes.NewBufferString(`{
-				"data": {
-					"nodes": [
-						{
-							"page": 1,
-							"caption": "page one"
-						}
-					],
-					"pageInfo": {
-						"endCursor": "PAGE1_END",
-						"hasNextPage": true
-					}
+			Header: http.Header{
+				"Content-Type": []string{`application/json`},
+				"Link":         []string{`<https://api.github.com/items?page=2>; rel="next"`},
+			},
+			Body: io.NopCloser(bytes.NewBufferString(`[
+				{
+					"page": 1,
+					"caption": "page one"
 				}
-			}`)),
+			]`)),
 		},
 		{
 			StatusCode: 200,
 			Header:     http.Header{"Content-Type": []string{`application/json`}},
-			Body: io.NopCloser(bytes.NewBufferString(`{
-				"data": {
-					"nodes": [
-						{
-							"page": 20,
-							"caption": "page twenty"
-						}
-					],
-					"pageInfo": {
-						"endCursor": "PAGE20_END",
-						"hasNextPage": false
-					}
+			Body: io.NopCloser(bytes.NewBufferString(`[
+				{
+					"page": 20,
+					"caption": "page twenty"
 				}
-			}`)),
+			]`)),
 		},
 	}
 
@@ -1348,12 +1130,11 @@ func Test_apiRun_paginated_template(t *testing.T) {
 			return config.NewMockConfig(), nil
 		},
 
-		RequestMethod: "POST",
-		RequestPath:   "graphql",
-		RawFields:     []string{"foo=bar"},
+		RequestMethod: "GET",
+		RequestPath:   "items",
 		Paginate:      true,
 		// test that templates executed per page properly render a table.
-		Template: `{{range .data.nodes}}{{tablerow .page .caption}}{{end}}`,
+		Template: `{{range .}}{{tablerow .page .caption}}{{end}}`,
 	}
 
 	err := apiRun(&options)
@@ -1364,25 +1145,7 @@ func Test_apiRun_paginated_template(t *testing.T) {
 	20  page twenty
 	`), stdout.String(), "stdout")
 	assert.Equal(t, "", stderr.String(), "stderr")
-
-	var requestData struct {
-		Variables map[string]any
-	}
-
-	bb, err := io.ReadAll(responses[0].Request.Body)
-	require.NoError(t, err)
-	err = json.Unmarshal(bb, &requestData)
-	require.NoError(t, err)
-	_, hasCursor := requestData.Variables["endCursor"].(string)
-	assert.Equal(t, false, hasCursor)
-
-	bb, err = io.ReadAll(responses[1].Request.Body)
-	require.NoError(t, err)
-	err = json.Unmarshal(bb, &requestData)
-	require.NoError(t, err)
-	endCursor, hasCursor := requestData.Variables["endCursor"].(string)
-	assert.Equal(t, true, hasCursor)
-	assert.Equal(t, "PAGE1_END", endCursor)
+	assert.Equal(t, 2, requestCount)
 }
 
 func Test_apiRun_DELETE(t *testing.T) {
@@ -1859,7 +1622,7 @@ func Test_processResponse_template(t *testing.T) {
 	tmpl := template.New(ios.Out, ios.TerminalWidth(), ios.ColorEnabled())
 	err := tmpl.Parse(opts.Template)
 	require.NoError(t, err)
-	_, err = processResponse(&resp, &opts, ios.Out, io.Discard, tmpl, true, true)
+	err = processResponse(&resp, &opts, ios.Out, io.Discard, tmpl, true, true)
 	require.NoError(t, err)
 	err = tmpl.Flush()
 	require.NoError(t, err)

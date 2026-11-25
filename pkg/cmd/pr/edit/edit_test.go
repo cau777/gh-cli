@@ -961,14 +961,12 @@ func Test_editRun(t *testing.T) {
 				EditorRetriever: testEditorRetriever{},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Exclude(t, httpmock.GraphQL(`query RepositoryAssignableActors\b`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
 					httpmock.StringResponse(`[
 						{ "login": "hubot", "node_id": "HUBOTID" },
 						{ "login": "monalisa", "node_id": "MONAID" }
 					]`))
-				reg.Exclude(t, httpmock.GraphQL(`mutation ReplaceActorsForAssignable\b`))
 				mockPullRequestUpdateIssue(reg)
 			},
 			stdout: "https://github.com/OWNER/REPO/pull/123\n",
@@ -1006,10 +1004,6 @@ func Test_editRun(t *testing.T) {
 				EditorRetriever: testEditorRetriever{},
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				// GHES should NOT use the new SuggestedReviewerActors query
-				reg.Exclude(t, httpmock.GraphQL(`query SuggestedReviewerActors\b`))
-				// GHES should use legacy metadata fetch for reviewers (AssignableUsers, not Actors)
-				reg.Exclude(t, httpmock.GraphQL(`query RepositoryAssignableActors\b`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/assignees"),
 					httpmock.StringResponse(`[

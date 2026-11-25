@@ -14,18 +14,10 @@ import (
 )
 
 func httpRequest(client *http.Client, hostname string, apiHost string, method string, p string, params any, headers []string) (*http.Response, error) {
-	isGraphQL := p == "graphql"
 	var requestURL string
 	if strings.Contains(p, "://") {
 		// Absolute URLs are used as-is; api_host is never applied to them.
 		requestURL = p
-	} else if isGraphQL {
-		// First we determine the GQL endpoint for the canonical host, which depends on what type of host it is
-		// e.g github.com will be at https://api.github.com/graphql and GHES myghes.com will be at https://myghes.com/api/graphql.
-		requestURL = ghinstance.GraphQLEndpoint(hostname)
-		if apiHost != "" {
-			requestURL = swapURLHost(requestURL, apiHost)
-		}
 	} else {
 		// Note that the gh api command takes the path verbatim from the user, so we
 		// intentionally do not route it through safeurl and do not escape it here.
@@ -43,9 +35,6 @@ func httpRequest(client *http.Client, hostname string, apiHost string, method st
 		if strings.EqualFold(method, "GET") {
 			requestURL = addQuery(requestURL, pp)
 		} else {
-			if isGraphQL {
-				pp = groupGraphQLVariables(pp)
-			}
 			b, err := json.Marshal(pp)
 			if err != nil {
 				return nil, fmt.Errorf("error serializing parameters: %w", err)
@@ -90,25 +79,6 @@ func httpRequest(client *http.Client, hostname string, apiHost string, method st
 	}
 
 	return client.Do(req)
-}
-
-func groupGraphQLVariables(params map[string]any) map[string]any {
-	topLevel := make(map[string]any)
-	variables := make(map[string]any)
-
-	for key, val := range params {
-		switch key {
-		case "query", "operationName":
-			topLevel[key] = val
-		default:
-			variables[key] = val
-		}
-	}
-
-	if len(variables) > 0 {
-		topLevel["variables"] = variables
-	}
-	return topLevel
 }
 
 func addQuery(path string, params map[string]any) string {
@@ -164,8 +134,8 @@ func addQueryParam(query url.Values, key string, value any) error {
 func swapURLHost(rawURL, newHost string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		// rawURL is always a well-formed URL built by ghinstance.GraphQLEndpoint
-		// or ghinstance.RESTPrefix, so this error is unreachable in practice. If it
+		// rawURL is always a well-formed URL built by ghinstance.RESTPrefix, so this
+		// error is unreachable in practice. If it
 		// did occur, returning the input unchanged leaves the request pointed at the
 		// original host, which is safe (no host swap, but request still succeeds).
 		return rawURL

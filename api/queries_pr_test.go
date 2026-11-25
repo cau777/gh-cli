@@ -2,8 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -137,24 +135,6 @@ func Test_Logins(t *testing.T) {
 			assert.Equal(t, tt.want, logins)
 		})
 	}
-}
-
-// TestPRRepositorySelectionMatchesStruct guards the seam between the two:
-// a field added to the selection but not the struct is silently dropped, and
-// one added to the struct but not the selection is silently zero.
-func TestPRRepositorySelectionMatchesStruct(t *testing.T) {
-	selection := PullRequestGraphQL([]string{"repository"})
-	inner := strings.TrimSuffix(strings.TrimPrefix(selection, "repository{"), "}")
-	selected := strings.Split(inner, ",")
-
-	var declared []string
-	repositoryType := reflect.TypeFor[PRRepository]()
-	for field := range repositoryType.Fields() {
-		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-		declared = append(declared, name)
-	}
-
-	assert.ElementsMatch(t, declared, selected)
 }
 
 func TestPullRequestRepositoryDatabaseID(t *testing.T) {

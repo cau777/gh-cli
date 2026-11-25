@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/api"
@@ -38,53 +37,6 @@ func REST(method, p string) Matcher {
 			return false
 		}
 		return req.URL.EscapedPath() == "/"+p
-	}
-}
-
-func GraphQL(q string) Matcher {
-	re := regexp.MustCompile(q)
-
-	return func(req *http.Request) bool {
-		if !strings.EqualFold(req.Method, "POST") {
-			return false
-		}
-		if req.URL.Path != "/graphql" && req.URL.Path != "/api/graphql" {
-			return false
-		}
-
-		var bodyData struct {
-			Query string
-		}
-		_ = decodeJSONBody(req, &bodyData)
-
-		return re.MatchString(bodyData.Query)
-	}
-}
-
-func GraphQLMutationMatcher(q string, cb func(map[string]any) bool) Matcher {
-	re := regexp.MustCompile(q)
-
-	return func(req *http.Request) bool {
-		if !strings.EqualFold(req.Method, "POST") {
-			return false
-		}
-		if req.URL.Path != "/graphql" && req.URL.Path != "/api/graphql" {
-			return false
-		}
-
-		var bodyData struct {
-			Query     string
-			Variables struct {
-				Input map[string]any
-			}
-		}
-		_ = decodeJSONBody(req, &bodyData)
-
-		if re.MatchString(bodyData.Query) {
-			return cb(bodyData.Variables.Input)
-		}
-
-		return false
 	}
 }
 
@@ -211,39 +163,6 @@ func RESTPayload(responseStatus int, responseBody string, cb func(payload map[st
 			"Content-Type": []string{"application/json"},
 		}
 		return httpResponseWithHeader(responseStatus, req, bytes.NewBufferString(responseBody), header), nil
-	}
-}
-
-func GraphQLMutation(body string, cb func(map[string]any)) Responder {
-	return func(req *http.Request) (*http.Response, error) {
-		var bodyData struct {
-			Variables struct {
-				Input map[string]any
-			}
-		}
-		err := decodeJSONBody(req, &bodyData)
-		if err != nil {
-			return nil, err
-		}
-		cb(bodyData.Variables.Input)
-
-		return httpResponse(200, req, bytes.NewBufferString(body)), nil
-	}
-}
-
-func GraphQLQuery(body string, cb func(string, map[string]any)) Responder {
-	return func(req *http.Request) (*http.Response, error) {
-		var bodyData struct {
-			Query     string
-			Variables map[string]any
-		}
-		err := decodeJSONBody(req, &bodyData)
-		if err != nil {
-			return nil, err
-		}
-		cb(bodyData.Query, bodyData.Variables)
-
-		return httpResponse(200, req, bytes.NewBufferString(body)), nil
 	}
 }
 

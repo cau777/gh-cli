@@ -566,17 +566,17 @@ func Test_viewRun(t *testing.T) {
 			sixHours, _ := time.ParseDuration("6h")
 			sixHoursAgo := time.Now().Add(-sixHours)
 			reg.Register(
-				httpmock.GraphQL(`query GistList\b`),
+				httpmock.REST("GET", "gists"),
 				httpmock.StringResponse(fmt.Sprintf(
-					`{ "data": { "viewer": { "gists": { "nodes": [
-							{
-								"name": "1234",
-								"files": [{ "name": "cool.txt" }],
-								"description": "",
-								"updatedAt": "%s",
-								"isPublic": true
-							}
-						] } } } }`,
+					`[
+						{
+							"id": "1234",
+							"files": { "cool.txt": { "filename": "cool.txt" } },
+							"description": "",
+							"updated_at": "%s",
+							"public": true
+						}
+					]`,
 					sixHoursAgo.Format(time.RFC3339),
 				)),
 			)

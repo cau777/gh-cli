@@ -11,56 +11,33 @@ import (
 
 func TestLabelList_pagination(t *testing.T) {
 	reg := &httpmock.Registry{}
+	defer reg.Verify(t)
 	client := &http.Client{Transport: reg}
 
 	reg.Register(
-		httpmock.GraphQL(`query LabelList\b`),
-		httpmock.StringResponse(`
-		{
-			"data": {
-				"repository": {
-					"labels": {
-						"totalCount": 2,
-						"nodes": [
-							{
-								"name": "bug",
-								"color": "d73a4a",
-								"description": "This is a bug label"
-							}
-						],
-						"pageInfo": {
-							"hasNextPage": true,
-							"endCursor": "Y3Vyc29yOnYyOpK5MjAxOS0xMC0xMVQwMTozODowMyswODowMM5f3HZq"
-						}
-					}
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/labels", map[string][]string{"per_page": {"100"}}),
+		httpmock.WithHeader(
+			httpmock.StringResponse(`[
+				{
+					"name": "bug",
+					"color": "d73a4a",
+					"description": "This is a bug label"
 				}
-			}
-		}`),
+			]`),
+			"Link",
+			`<https://api.github.com/repos/OWNER/REPO/labels?page=2&per_page=100>; rel="next"`,
+		),
 	)
 
 	reg.Register(
-		httpmock.GraphQL(`query LabelList\b`),
-		httpmock.StringResponse(`
-		{
-			"data": {
-				"repository": {
-					"labels": {
-						"totalCount": 2,
-						"nodes": [
-							{
-								"name": "docs",
-								"color": "ffa8da",
-								"description": "This is a docs label"
-							}
-						],
-						"pageInfo": {
-							"hasNextPage": false,
-							"endCursor": "Y3Vyc29yOnYyOpK5MjAyMi0wMS0zMVQxODo1NTo1MiswODowMM7hiAL3"
-						}
-					}
-				}
+		httpmock.QueryMatcher("GET", "repos/OWNER/REPO/labels", map[string][]string{"page": {"2"}, "per_page": {"100"}}),
+		httpmock.StringResponse(`[
+			{
+				"name": "docs",
+				"color": "ffa8da",
+				"description": "This is a docs label"
 			}
-		}`),
+		]`),
 	)
 
 	repo := ghrepo.New("OWNER", "REPO")

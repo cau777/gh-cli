@@ -2,8 +2,10 @@ package list
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/cli/cli/v2/api"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 type OrganizationList struct {
@@ -17,36 +19,6 @@ type Organization struct {
 }
 
 func listOrgs(httpClient *http.Client, hostname string, limit int) (*OrganizationList, error) {
-	type response struct {
-		User struct {
-			Login         string
-			Organizations struct {
-				TotalCount int
-				Nodes      []Organization
-				PageInfo   struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"organizations(first: $limit, after: $endCursor)"`
-		}
-	}
-
-	query := `query OrganizationList($user: String!, $limit: Int!, $endCursor: String) {
-		user(login: $user) {
-			login
-			organizations(first: $limit, after: $endCursor) {
-				totalCount
-				nodes {
-					login
-				}
-				pageInfo {
-					hasNextPage
-					endCursor
-				}
-			}
-		}
-	}`
-
 	client := api.NewClientFromHTTP(httpClient)
 
 	user, err := api.CurrentLoginName(client, hostname)
@@ -54,38 +26,39 @@ func listOrgs(httpClient *http.Client, hostname string, limit int) (*Organizatio
 		return nil, err
 	}
 
-	listResult := OrganizationList{}
-	listResult.User = user
-	pageLimit := min(limit, 100)
-	variables := map[string]any{
-		"user": user,
+	u, err := safeurl.JoinPath("user", "orgs")
+	if err != nil {
+		return nil, err
+	}
+	perPage := min(limit, 100)
+	if perPage < 1 {
+		perPage = 30
+	}
+	u.SetQuery("per_page", strconv.Itoa(perPage))
+
+	listResult := OrganizationList{
+		User: user,
 	}
 
-loop:
-	for {
-		variables["limit"] = pageLimit
-		var data response
-		err := client.GraphQL(hostname, query, variables, &data)
+	nextPath := u.String()
+	for nextPath != "" {
+		var page []Organization
+		next, err := client.RESTWithNext(hostname, http.MethodGet, nextPath, nil, &page)
 		if err != nil {
 			return nil, err
 		}
 
-		listResult.TotalCount = data.User.Organizations.TotalCount
-
-		for _, org := range data.User.Organizations.Nodes {
+		for _, org := range page {
 			listResult.Organizations = append(listResult.Organizations, org)
 			if len(listResult.Organizations) == limit {
-				break loop
+				listResult.TotalCount = len(listResult.Organizations)
+				return &listResult, nil
 			}
 		}
 
-		if data.User.Organizations.PageInfo.HasNextPage {
-			variables["endCursor"] = data.User.Organizations.PageInfo.EndCursor
-			pageLimit = min(pageLimit, limit-len(listResult.Organizations))
-		} else {
-			break
-		}
+		nextPath = next
 	}
 
+	listResult.TotalCount = len(listResult.Organizations)
 	return &listResult, nil
 }

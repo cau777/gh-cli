@@ -418,7 +418,7 @@ func TestWatchRun(t *testing.T) {
 	}
 }
 func TestWatchRun_eventListenHint(t *testing.T) {
-	const pullRequestNodes = `{"number": 2898, "headRepository": {"owner": {"login": "OWNER"}, "name": "REPO"}}`
+	const pullRequestNodes = `{"number": 2898, "head": {"ref": "trunk", "repo": {"owner": {"login": "OWNER"}, "name": "REPO"}}}`
 
 	tests := []struct {
 		name          string
@@ -480,8 +480,8 @@ func TestWatchRun_eventListenHint(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
 					httpmock.JSONResponse(shared.TestWorkflow))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(`{"data": {"repository": {"pullRequests": {"nodes": [`+tt.pullRequests+`]}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[`+tt.pullRequests+`]`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/2"),
 					httpmock.JSONResponse(shared.TestRun(2, shared.Completed, shared.Success)))

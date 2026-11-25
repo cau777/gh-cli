@@ -177,20 +177,18 @@ func getUsername(c *config.Config, hostname, token string, transport http.RoundT
 		AuthToken: token,
 		Transport: transport,
 	}
-	client, err := ghAPI.NewGraphQLClient(opts)
+	client, err := ghAPI.NewRESTClient(opts)
 	if err != nil {
 		return "", err
 	}
-	var query struct {
-		Viewer struct {
-			Login string
-		}
+	var user struct {
+		Login string
 	}
-	err = client.Query("CurrentUser", &query, nil)
+	err = client.Get("user", &user)
 	if err != nil {
 		return "", err
 	}
-	return query.Viewer.Login, nil
+	return user.Login, nil
 }
 
 func migrateToken(hostname, username string, tokenSource tokenSource) error {

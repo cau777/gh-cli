@@ -426,8 +426,8 @@ func Test_editRun(t *testing.T) {
 				VerifyTag: true,
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": ""}}}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.4"),
+					httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 			},
 			wantErr:    "tag v1.2.4 doesn't exist in the repo OWNER/REPO, aborting due to --verify-tag flag",
 			wantStdout: "",

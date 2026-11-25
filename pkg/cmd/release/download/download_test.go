@@ -264,10 +264,10 @@ func Test_downloadRun(t *testing.T) {
 						]
 					}`),
 				)
-				// An unauthenticated draft lookup fails over GraphQL and must not
-				// mask the published release found over REST.
+				// An unauthenticated draft lookup fails and must not
+				// mask the published release found by tag.
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryReleaseByTag\b`),
+					httpmock.REST("GET", "repos/OWNER/REPO/releases"),
 					httpmock.StatusStringResponse(403, `{"message":"This endpoint requires you to be authenticated."}`),
 				)
 				reg.Register(httpmock.REST("GET", "assets/5678"), httpmock.StringResponse(`5678`))

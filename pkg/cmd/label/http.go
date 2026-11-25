@@ -1,12 +1,14 @@
 package label
 
 import (
-	"fmt"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 const (
@@ -22,19 +24,6 @@ var defaultFields = []string{
 	"name",
 }
 
-type listLabelsResponseData struct {
-	Repository struct {
-		Labels struct {
-			TotalCount int
-			Nodes      []label
-			PageInfo   struct {
-				HasNextPage bool
-				EndCursor   string
-			}
-		}
-	}
-}
-
 type listQueryOptions struct {
 	Limit int
 	Query string
@@ -44,8 +33,22 @@ type listQueryOptions struct {
 	fields []string
 }
 
-func (opts listQueryOptions) OrderBy() map[string]string {
-	// Set on copy to keep original intact.
+type restLabel struct {
+	NodeID      string `json:"node_id"`
+	URL         string `json:"url"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Color       string `json:"color"`
+	Default     bool   `json:"default"`
+}
+
+// listLabels lists the labels in the given repo. Pass -1 for limit to list all labels;
+// otherwise, only that number of labels is returned for any number of pages.
+func listLabels(client *http.Client, repo ghrepo.Interface, opts listQueryOptions) ([]label, int, error) {
+	if slices.Contains(opts.fields, "createdAt") || slices.Contains(opts.fields, "updatedAt") {
+		return nil, 0, api.NotSupportedError("label createdAt and updatedAt fields are not supported with REST")
+	}
+
 	if opts.Order == "" {
 		opts.Order = defaultOrder
 	}
@@ -53,83 +56,59 @@ func (opts listQueryOptions) OrderBy() map[string]string {
 		opts.Sort = defaultSort
 	}
 
-	field := strings.ToUpper(opts.Sort)
-	if opts.Sort == "created" {
-		field = "CREATED_AT"
+	u, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "labels")
+	if err != nil {
+		return nil, 0, err
 	}
-	return map[string]string{
-		"direction": strings.ToUpper(opts.Order),
-		"field":     field,
-	}
-}
-
-// listLabels lists the labels in the given repo. Pass -1 for limit to list all labels;
-// otherwise, only that number of labels is returned for any number of pages.
-func listLabels(client *http.Client, repo ghrepo.Interface, opts listQueryOptions) ([]label, int, error) {
-	if len(opts.fields) == 0 {
-		opts.fields = defaultFields
-	}
+	u.SetQuery("per_page", strconv.Itoa(maxPageSize))
 
 	apiClient := api.NewClientFromHTTP(client)
-	fragment := fmt.Sprintf("fragment label on Label{%s}", strings.Join(opts.fields, ","))
-	query := fragment + `
-	query LabelList($owner: String!, $repo: String!, $limit: Int!, $endCursor: String, $query: String, $orderBy: LabelOrder) {
-		repository(owner: $owner, name: $repo) {
-			labels(first: $limit, after: $endCursor, query: $query, orderBy: $orderBy) {
-				totalCount,
-				nodes {
-					...label
-				}
-				pageInfo {
-					hasNextPage
-					endCursor
-				}
-			}
-		}
-	}`
-
-	variables := map[string]any{
-		"owner":   repo.RepoOwner(),
-		"repo":    repo.RepoName(),
-		"orderBy": opts.OrderBy(),
-		"query":   opts.Query,
-	}
-
 	var labels []label
-	var totalCount int
+	needle := strings.ToLower(opts.Query)
 
-loop:
-	for {
-		var response listLabelsResponseData
-		variables["limit"] = determinePageSize(opts.Limit - len(labels))
-		err := apiClient.GraphQL(repo.RepoHost(), query, variables, &response)
+	nextPath := u.String()
+	for nextPath != "" {
+		var page []restLabel
+		next, err := apiClient.RESTWithNext(repo.RepoHost(), http.MethodGet, nextPath, nil, &page)
 		if err != nil {
 			return nil, 0, err
 		}
 
-		totalCount = response.Repository.Labels.TotalCount
-
-		for _, label := range response.Repository.Labels.Nodes {
-			labels = append(labels, label)
-			if len(labels) == opts.Limit {
-				break loop
+		for _, r := range page {
+			if needle != "" &&
+				!strings.Contains(strings.ToLower(r.Name), needle) &&
+				!strings.Contains(strings.ToLower(r.Description), needle) {
+				continue
 			}
+			labels = append(labels, label{
+				ID:          r.NodeID,
+				URL:         r.URL,
+				Name:        r.Name,
+				Description: r.Description,
+				Color:       r.Color,
+				IsDefault:   r.Default,
+			})
 		}
 
-		if response.Repository.Labels.PageInfo.HasNextPage {
-			variables["endCursor"] = response.Repository.Labels.PageInfo.EndCursor
-		} else {
-			break
-		}
+		nextPath = next
+	}
+
+	if opts.Sort == "name" {
+		slices.SortStableFunc(labels, func(a, b label) int {
+			cmp := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+			if opts.Order == "desc" {
+				return -cmp
+			}
+			return cmp
+		})
+	} else if opts.Order == "desc" {
+		slices.Reverse(labels)
+	}
+
+	totalCount := len(labels)
+	if opts.Limit > 0 && len(labels) > opts.Limit {
+		labels = labels[:opts.Limit]
 	}
 
 	return labels, totalCount, nil
-}
-
-func determinePageSize(numRequestedItems int) int {
-	// If numRequestedItems is -1 then retrieve maxPageSize
-	if numRequestedItems < 0 || numRequestedItems > maxPageSize {
-		return maxPageSize
-	}
-	return numRequestedItems
 }

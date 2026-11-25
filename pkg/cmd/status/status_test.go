@@ -84,6 +84,36 @@ func TestNewCmdStatus(t *testing.T) {
 	}
 }
 
+func testSearchMatcher(prefix string) httpmock.Matcher {
+	return func(req *http.Request) bool {
+		return strings.EqualFold(req.Method, http.MethodGet) &&
+			strings.HasSuffix(req.URL.Path, "/search/issues") &&
+			strings.HasPrefix(req.URL.Query().Get("q"), prefix)
+	}
+}
+
+func stubEmptySearch(reg *httpmock.Registry) {
+	reg.Register(
+		testSearchMatcher("assignee:@me"),
+		httpmock.StringResponse(`{"items": []}`),
+	)
+	reg.Register(
+		testSearchMatcher("review-requested:@me"),
+		httpmock.StringResponse(`{"items": []}`),
+	)
+}
+
+func stubFixtureSearch(reg *httpmock.Registry) {
+	reg.Register(
+		testSearchMatcher("assignee:@me"),
+		httpmock.FileResponse("./fixtures/search_assignments.json"),
+	)
+	reg.Register(
+		testSearchMatcher("review-requested:@me"),
+		httpmock.FileResponse("./fixtures/search_review_requested.json"),
+	)
+}
+
 func TestStatusRun(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -98,9 +128,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login":"jillvalentine"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.StringResponse(`{"data": { "assignments": {"nodes": [] }, "reviewRequested": {"nodes": []}}}`))
+				stubEmptySearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.StringResponse(`[]`))
@@ -117,9 +145,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login":"jillvalentine"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.StringResponse(`{"data": { "assignments": {"nodes": [] }, "reviewRequested": {"nodes": []}}}`))
+				stubEmptySearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.StatusStringResponse(http.StatusNotFound, `{"message":"Not Found"}`))
@@ -151,9 +177,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "repos/vilmibm/gh-screensaver/issues/comments/10"),
 					httpmock.StringResponse(`{"body":"a message for @jillvalentine"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.FileResponse("./fixtures/search.json"))
+				stubFixtureSearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.FileResponse("./fixtures/notifications.json"))
@@ -182,9 +206,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "repos/vilmibm/gh-screensaver/issues/comments/10"),
 					httpmock.StringResponse(`{"body":"a message for @jillvalentine"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.FileResponse("./fixtures/search.json"))
+				stubFixtureSearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.FileResponse("./fixtures/notifications.json"))
@@ -208,9 +230,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "repos/vilmibm/gh-screensaver/issues/comments/10"),
 					httpmock.StringResponse(`{"body":"a message for @jillvalentine"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.FileResponse("./fixtures/search.json"))
+				stubFixtureSearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.FileResponse("./fixtures/notifications.json"))
@@ -240,9 +260,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "repos/rpd/todo/issues/comments/1065"),
 					httpmock.StringResponse(`{"body":"not a real mention"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.FileResponse("./fixtures/search.json"))
+				stubFixtureSearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.FileResponse("./fixtures/notifications.json"))
@@ -287,8 +305,31 @@ func TestStatusRun(t *testing.T) {
 					httpmock.REST("GET", "repos/vilmibm/gh-screensaver/issues/comments/10"),
 					httpmock.StringResponse(`{"body":"a message for @jillvalentine"}`))
 				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.FileResponse("./fixtures/search_forbidden.json"))
+					testSearchMatcher("assignee:@me"),
+					httpmock.StringResponse(`{
+						"items": [
+							{
+								"updated_at": "2022-03-15T17:10:25Z",
+								"pull_request": {},
+								"title": "Pin extensions",
+								"number": 5272,
+								"repository_url": "https://api.github.com/repos/cli/cli"
+							},
+							{
+								"updated_at": "2022-03-10T21:33:57Z",
+								"title": "yolo",
+								"number": 157,
+								"repository_url": "https://api.github.com/repos/vilmibm/testing"
+							}
+						]
+					}`))
+				reg.Register(
+					testSearchMatcher("review-requested:@me"),
+					httpmock.WithHeader(
+						httpmock.StatusStringResponse(403, `{"message":"Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization."}`),
+						"Content-Type",
+						"application/json",
+					))
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.FileResponse("./fixtures/notifications.json"))
@@ -302,7 +343,7 @@ func TestStatusRun(t *testing.T) {
 				vilmibm/testing#157  yolo             │ cli/cli#5272  Pin extensions          
 				                                      │                                       
 				Review Requests                       │ Mentions                              
-				cli/cli#5272  Pin extensions          │ cli/cli#1096               @jillval...
+				Nothing here ^_^                      │ cli/cli#1096               @jillval...
 				                                      │ vilmibm/gh-screensaver#15  a messag...
 				                                                                              
 				Repository Activity
@@ -338,9 +379,7 @@ func TestStatusRun(t *testing.T) {
 				reg.Register(
 					httpmock.REST("GET", "repos/vilmibm/gh-screensaver/issues/comments/10"),
 					httpmock.StringResponse(`{"body":"a message for @jillvalentine"}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.FileResponse("./fixtures/search.json"))
+				stubFixtureSearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.FileResponse("./fixtures/notifications.json"))
@@ -383,9 +422,7 @@ func TestStatusRun(t *testing.T) {
 					httpmock.StatusStringResponse(429, `{
 						"message": "Too many requests."
 					}`))
-				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.StringResponse(`{"data": { "assignments": {"nodes": [] }, "reviewRequested": {"nodes": []}}}`))
+				stubEmptySearch(reg)
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.StringResponse(`[
@@ -419,27 +456,15 @@ func TestStatusRun(t *testing.T) {
 					httpmock.REST("GET", "user"),
 					httpmock.StringResponse(`{"login":"jillvalentine"}`))
 				reg.Register(
-					httpmock.GraphQL("AssignedSearch"),
-					httpmock.StringResponse(`{
-						"data": {
-							"assignments": {
-								"nodes": [
-									null
-								]
-							}
-						},
-						"errors": [
-							{
-								"type": "NOT FOUND",
-								"path": [
-									"assignments",
-									"nodes",
-									0
-								],
-								"message": "Not found."
-							}
-						]
-					}`))
+					testSearchMatcher("assignee:@me"),
+					httpmock.WithHeader(
+						httpmock.StatusStringResponse(http.StatusNotFound, `{"message":"Not Found"}`),
+						"Content-Type",
+						"application/json",
+					))
+				reg.Register(
+					testSearchMatcher("review-requested:@me"),
+					httpmock.StringResponse(`{"items": []}`))
 				reg.Register(
 					httpmock.REST("GET", "notifications"),
 					httpmock.StringResponse(`[]`))
@@ -448,7 +473,7 @@ func TestStatusRun(t *testing.T) {
 					httpmock.StringResponse(`[]`))
 			},
 			opts:       &StatusOptions{},
-			wantErrMsg: "failed to search: could not search for assignments: GraphQL: Not found. (assignments.nodes.0)",
+			wantErrMsg: "failed to search: could not search for assignments: HTTP 404: Not Found (https://api.github.com/search/issues?per_page=25&q=assignee%3A%40me+state%3Aopen+archived%3Afalse)",
 		},
 	}
 

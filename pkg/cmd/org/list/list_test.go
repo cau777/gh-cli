@@ -94,12 +94,8 @@ func TestListRun(t *testing.T) {
 					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
-					httpmock.GraphQL(`query OrganizationList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "user": {
-							"organizations": { "nodes": [], "totalCount": 0 }
-						} } }`,
-					),
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[]`),
 				)
 
 				return &http.Client{Transport: r}, nil
@@ -121,19 +117,8 @@ There are no organizations associated with @octocat
 					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
-					httpmock.GraphQL(`query OrganizationList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "user": {	"organizations": {
-							"totalCount": 2,
-							"nodes": [
-							{
-								"login": "github"
-							},
-							{
-								"login": "cli"
-							}
-						]	}	} } }`,
-					),
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[{"login":"github"},{"login":"cli"}]`),
 				)
 
 				return &http.Client{Transport: r}, nil
@@ -157,19 +142,8 @@ cli
 					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
-					httpmock.GraphQL(`query OrganizationList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "user": {	"organizations": {
-							"totalCount": 2,
-							"nodes": [
-							{
-								"login": "github"
-							},
-							{
-								"login": "cli"
-							}
-						]	}	} } }`,
-					),
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[{"login":"github"},{"login":"cli"}]`),
 				)
 
 				return &http.Client{Transport: r}, nil
@@ -177,7 +151,7 @@ cli
 			isTTY: true,
 			wantOut: heredoc.Doc(`
 
-Showing 1 of 2 organizations
+Showing 1 of 1 organization
 
 github
 `),
@@ -192,19 +166,8 @@ github
 					httpmock.StringResponse(`{"login":"octocat"}`))
 
 				r.Register(
-					httpmock.GraphQL(`query OrganizationList\b`),
-					httpmock.StringResponse(`
-						{ "data": { "user": {	"organizations": {
-							"totalCount": 2,
-							"nodes": [
-							{
-								"login": "github"
-							},
-							{
-								"login": "cli"
-							}
-						]	}	} } }`,
-					),
+					httpmock.REST("GET", "user/orgs"),
+					httpmock.StringResponse(`[{"login":"github"},{"login":"cli"}]`),
 				)
 				return &http.Client{Transport: r}, nil
 			}},

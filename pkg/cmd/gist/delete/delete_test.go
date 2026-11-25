@@ -267,24 +267,23 @@ func Test_deleteRun(t *testing.T) {
 		if tt.mockPromptGists {
 			if tt.noGists {
 				reg.Register(
-					httpmock.GraphQL(`query GistList\b`),
-					httpmock.StringResponse(
-						`{ "data": { "viewer": { "gists": { "nodes": [] }} } }`),
+					httpmock.REST("GET", "gists"),
+					httpmock.StringResponse(`[]`),
 				)
 			} else {
 				sixHours, _ := time.ParseDuration("6h")
 				sixHoursAgo := time.Now().Add(-sixHours)
 				reg.Register(
-					httpmock.GraphQL(`query GistList\b`),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
-								{
-									"name": "1234",
-									"files": [{ "name": "cool.txt" }],
-									"updatedAt": "%s",
-									"isPublic": true
-								}
-							] } } } }`,
+						`[
+							{
+								"id": "1234",
+								"files": { "cool.txt": { "filename": "cool.txt" } },
+								"updated_at": "%s",
+								"public": true
+							}
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)

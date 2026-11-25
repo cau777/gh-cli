@@ -14,7 +14,6 @@ import (
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/cmd/release/shared"
-	"github.com/shurcooL/githubv4"
 
 	ghauth "github.com/cli/go-gh/v2/pkg/auth"
 )
@@ -39,22 +38,20 @@ func (e errMissingRequiredWorkflowScope) Error() string {
 }
 
 func remoteTagExists(httpClient *http.Client, repo ghrepo.Interface, tagName string) (bool, error) {
-	gql := api.NewClientFromHTTP(httpClient)
-	qualifiedTagName := fmt.Sprintf("refs/tags/%s", tagName)
-	var query struct {
-		Repository struct {
-			Ref struct {
-				ID string
-			} `graphql:"ref(qualifiedName: $tagName)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "git", "ref", "tags", tagName)
+	if err != nil {
+		return false, err
 	}
-	variables := map[string]any{
-		"owner":   githubv4.String(repo.RepoOwner()),
-		"name":    githubv4.String(repo.RepoName()),
-		"tagName": githubv4.String(qualifiedTagName),
+
+	err = api.NewClientFromHTTP(httpClient).REST(repo.RepoHost(), http.MethodGet, path.String(), nil, nil)
+	if err != nil {
+		var httpErr api.HTTPError
+		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+			return false, nil
+		}
+		return false, err
 	}
-	err := gql.Query(repo.RepoHost(), "RepositoryFindRef", &query, variables)
-	return query.Repository.Ref.ID != "", err
+	return true, nil
 }
 
 func getTags(httpClient *http.Client, repo ghrepo.Interface, limit int) ([]tag, error) {

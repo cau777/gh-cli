@@ -94,44 +94,18 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli")},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.GraphQLQuery(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										},
-										{
-											"name": "docs",
-											"color": "6cafc9"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "Something isn't working"
+						},
+						{
+							"name": "docs",
+							"color": "6cafc9"
 						}
-					}`, func(s string, m map[string]any) {
-						expected := map[string]any{
-							"owner": "cli",
-							"repo":  "cli",
-							"orderBy": map[string]any{
-								"direction": "ASC",
-								"field":     "CREATED_AT",
-							},
-							"query": "",
-							"limit": float64(100),
-						}
-						assert.Equal(t, expected, m)
-					}),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),
@@ -159,28 +133,14 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli")},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 1,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "Something isn't working"
 						}
-					}`),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),
@@ -200,22 +160,8 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli")},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 0,
-									"nodes": [],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
-						}
-					}`),
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[]`),
 				)
 			},
 			wantStdout: "✓ Cloned 0 labels from cli/cli to OWNER/REPO\n",
@@ -226,32 +172,18 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli")},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										},
-										{
-											"name": "docs",
-											"color": "6cafc9"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "Something isn't working"
+						},
+						{
+							"name": "docs",
+							"color": "6cafc9"
 						}
-					}`),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),
@@ -279,32 +211,18 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli")},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										},
-										{
-											"name": "docs",
-											"color": "6cafc9"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "Something isn't working"
+						},
+						{
+							"name": "docs",
+							"color": "6cafc9"
 						}
-					}`),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),
@@ -331,32 +249,18 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli"), Force: true},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										},
-										{
-											"name": "docs",
-											"color": "6cafc9"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "Something isn't working"
+						},
+						{
+							"name": "docs",
+							"color": "6cafc9"
 						}
-					}`),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),
@@ -398,36 +302,12 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "invalid"), Force: true},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.WithHeader(
-						httpmock.StatusStringResponse(200, `
-						{
-							"data": {
-							  "repository": null
-							},
-							"errors": [
-							  {
-								"type": "NOT_FOUND",
-								"path": [
-								  "repository"
-								],
-								"locations": [
-								  {
-									"line": 3,
-									"column": 1
-								  }
-								],
-								"message": "Could not resolve to a Repository with the name 'cli/invalid'."
-							  }
-							]
-						}`),
-						"Content-Type",
-						"application/json",
-					),
+					httpmock.REST("GET", "repos/cli/invalid/labels"),
+					httpmock.StatusStringResponse(404, `{"message":"Not Found"}`),
 				)
 			},
 			wantErr:    true,
-			wantErrMsg: "GraphQL: Could not resolve to a Repository with the name 'cli/invalid'. (repository)",
+			wantErrMsg: "HTTP 404 (https://api.github.com/repos/cli/invalid/labels?per_page=100)",
 		},
 		{
 			name: "create error",
@@ -435,28 +315,14 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli"), Force: true},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 1,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/cli/cli/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "Something isn't working"
 						}
-					}`),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),
@@ -476,59 +342,27 @@ func TestCloneRun(t *testing.T) {
 			opts: &cloneOptions{SourceRepo: ghrepo.New("cli", "cli"), Force: true},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.GraphQLQuery(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "Something isn't working"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": true,
-										"endCursor": "abcd1234"
-									}
-								}
+					httpmock.QueryMatcher("GET", "repos/cli/cli/labels", map[string][]string{"per_page": {"100"}}),
+					httpmock.WithHeader(
+						httpmock.StringResponse(`[
+							{
+								"name": "bug",
+								"color": "d73a4a",
+								"description": "Something isn't working"
 							}
-						}
-					}`, func(s string, m map[string]any) {
-						assert.Equal(t, "cli", m["owner"])
-						assert.Equal(t, "cli", m["repo"])
-						assert.Equal(t, float64(100), m["limit"].(float64))
-					}),
+						]`),
+						"Link",
+						`<https://api.github.com/repos/cli/cli/labels?page=2&per_page=100>; rel="next"`,
+					),
 				)
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.GraphQLQuery(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "docs",
-											"color": "6cafc9"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "abcd1234"
-									}
-								}
-							}
+					httpmock.QueryMatcher("GET", "repos/cli/cli/labels", map[string][]string{"page": {"2"}, "per_page": {"100"}}),
+					httpmock.StringResponse(`[
+						{
+							"name": "docs",
+							"color": "6cafc9"
 						}
-					}`, func(s string, m map[string]any) {
-						assert.Equal(t, "cli", m["owner"])
-						assert.Equal(t, "cli", m["repo"])
-						assert.Equal(t, float64(100), m["limit"].(float64))
-					}),
+					]`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/labels"),

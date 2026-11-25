@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -349,15 +350,19 @@ func sshKeyUpload(httpClient *http.Client, hostname, keyFile string, title strin
 // the transport has nothing to attach. The transport only sets Authorization when it is
 // absent, so the header set here wins.
 func GetCurrentLogin(httpClient *http.Client, hostname, authToken string) (string, error) {
-	var result struct{ Viewer struct{ Login string } }
-
 	// TODO(api-client-rollout)
 	// This line of code is part of a mechanical roll out of the api client.
 	// As a follow up, consider whether the api client can be injected to this call site, rather than constructed
-	err := api.NewClientFromHTTP(httpClient).GraphQL(hostname, `query UserCurrent{viewer{login}}`, nil, &result,
+	resp, err := api.NewClientFromHTTP(httpClient).Request(hostname, http.MethodGet, "user", nil,
 		api.WithHeader("Authorization", "token "+authToken))
 	if err != nil {
 		return "", err
 	}
-	return result.Viewer.Login, nil
+	defer resp.Body.Close()
+
+	var result struct{ Login string }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	return result.Login, nil
 }

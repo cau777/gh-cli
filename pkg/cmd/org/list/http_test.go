@@ -2,10 +2,10 @@ package list
 
 import (
 	"net/http"
-	"reflect"
 	"testing"
 
 	"github.com/cli/cli/v2/pkg/httpmock"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_listOrgs(t *testing.T) {
@@ -29,16 +29,8 @@ func Test_listOrgs(t *testing.T) {
 					httpmock.REST("GET", "api/v3/user"),
 					httpmock.StringResponse(`{"login":"octocat"}`))
 				reg.Register(
-					httpmock.GraphQL(`query OrganizationList\b`),
-					httpmock.GraphQLQuery(`{"data":{}}`, func(query string, vars map[string]any) {
-						want := map[string]any{
-							"user":  "octocat",
-							"limit": float64(30),
-						}
-						if !reflect.DeepEqual(vars, want) {
-							t.Errorf("got GraphQL variables %#v, want %#v", vars, want)
-						}
-					}))
+					httpmock.QueryMatcher("GET", "api/v3/user/orgs", map[string][]string{"per_page": {"30"}}),
+					httpmock.StringResponse(`[]`))
 			},
 		},
 		{
@@ -51,16 +43,8 @@ func Test_listOrgs(t *testing.T) {
 					httpmock.REST("GET", "api/v3/user"),
 					httpmock.StringResponse(`{"login":"octocat"}`))
 				r.Register(
-					httpmock.GraphQL(`query OrganizationList\b`),
-					httpmock.GraphQLQuery(`{"data":{}}`, func(query string, vars map[string]any) {
-						want := map[string]any{
-							"user":  "octocat",
-							"limit": float64(1),
-						}
-						if !reflect.DeepEqual(vars, want) {
-							t.Errorf("got GraphQL variables %#v, want %#v", vars, want)
-						}
-					}))
+					httpmock.QueryMatcher("GET", "api/v3/user/orgs", map[string][]string{"per_page": {"1"}}),
+					httpmock.StringResponse(`[{"login":"github"}]`))
 			},
 		},
 	}
@@ -68,16 +52,14 @@ func Test_listOrgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := &httpmock.Registry{}
+			defer reg.Verify(t)
 			if tt.httpStub != nil {
 				tt.httpStub(t, reg)
 			}
 			httpClient := &http.Client{Transport: reg}
 
 			_, err := listOrgs(httpClient, "octocat", tt.args.limit)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("listOrgs() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			assert.Equal(t, tt.wantErr, err != nil)
 		})
 	}
 }

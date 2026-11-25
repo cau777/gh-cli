@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/cli/cli/v2/internal/text"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/gabriel-vasile/mimetype"
-	"github.com/shurcooL/githubv4"
 )
 
 type GistFile struct {
@@ -101,34 +101,9 @@ func GistIDFromURL(gistURL string) (string, error) {
 const maxPerPage = 100
 
 func ListGists(client *http.Client, hostname string, limit int, filter *regexp.Regexp, includeContent bool, visibility string) ([]Gist, error) {
-	type response struct {
-		Viewer struct {
-			Gists struct {
-				Nodes []struct {
-					Description string
-					Files       []struct {
-						Name string
-						Text string `graphql:"text @include(if: $includeContent)"`
-					}
-					IsPublic  bool
-					Name      string
-					UpdatedAt time.Time
-				}
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"gists(first: $per_page, after: $endCursor, privacy: $visibility, orderBy: {field: CREATED_AT, direction: DESC})"`
-		}
-	}
-
 	perPage := min(limit, maxPerPage)
-
-	variables := map[string]any{
-		"per_page":       githubv4.Int(perPage),
-		"endCursor":      (*githubv4.String)(nil),
-		"visibility":     githubv4.GistPrivacy(strings.ToUpper(visibility)),
-		"includeContent": githubv4.Boolean(includeContent),
+	if perPage < 1 {
+		perPage = 30
 	}
 
 	filterFunc := func(gist *Gist) bool {
@@ -149,32 +124,59 @@ func ListGists(client *http.Client, hostname string, limit int, filter *regexp.R
 		return false
 	}
 
-	gql := api.NewClientFromHTTP(client)
+	u, err := safeurl.JoinPath("gists")
+	if err != nil {
+		return nil, err
+	}
+	u.SetQuery("per_page", strconv.Itoa(perPage))
 
+	apiClient := api.NewClientFromHTTP(client)
 	gists := []Gist{}
+	vis := strings.ToLower(visibility)
+
+	nextPath := u.String()
 pagination:
-	for {
-		var result response
-		err := gql.Query(hostname, "GistList", &result, variables)
+	for nextPath != "" {
+		var page []Gist
+		next, err := apiClient.RESTWithNext(hostname, http.MethodGet, nextPath, nil, &page)
 		if err != nil {
 			return nil, err
 		}
 
-		for _, gist := range result.Viewer.Gists.Nodes {
-			files := map[string]*GistFile{}
-			for _, file := range gist.Files {
-				files[file.Name] = &GistFile{
-					Filename: file.Name,
-					Content:  file.Text,
+		for _, gist := range page {
+			switch vis {
+			case "public":
+				if !gist.Public {
+					continue
+				}
+			case "secret":
+				if gist.Public {
+					continue
 				}
 			}
 
-			gist := Gist{
-				ID:          gist.Name,
-				Description: gist.Description,
-				Files:       files,
-				UpdatedAt:   gist.UpdatedAt,
-				Public:      gist.IsPublic,
+			if gist.Files == nil {
+				gist.Files = map[string]*GistFile{}
+			}
+			hasContent := false
+			for name, f := range gist.Files {
+				if f == nil {
+					gist.Files[name] = &GistFile{Filename: name}
+					continue
+				}
+				if f.Filename == "" {
+					f.Filename = name
+				}
+				if f.Content != "" {
+					hasContent = true
+				}
+			}
+
+			if includeContent && !hasContent && len(gist.Files) > 0 {
+				fullGist, err := GetGist(client, hostname, gist.ID)
+				if err == nil && fullGist != nil {
+					gist.Files = fullGist.Files
+				}
 			}
 
 			if filter == nil || filterFunc(&gist) {
@@ -186,10 +188,7 @@ pagination:
 			}
 		}
 
-		if !result.Viewer.Gists.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(result.Viewer.Gists.PageInfo.EndCursor)
+		nextPath = next
 	}
 
 	return gists, nil

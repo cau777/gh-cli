@@ -753,21 +753,17 @@ func Test_editRun(t *testing.T) {
 		if tt.mockGistList {
 			sixHours, _ := time.ParseDuration("6h")
 			sixHoursAgo := time.Now().Add(-sixHours)
-			reg.Register(httpmock.GraphQL(`query GistList\b`),
+			reg.Register(httpmock.REST("GET", "gists"),
 				httpmock.StringResponse(
-					fmt.Sprintf(`{ "data": { "viewer": { "gists": { "nodes": [
-							{
-								"description": "whatever",
-								"files": [{ "name": "cicada.txt" }, { "name": "unix.md"	}],
-								"isPublic": true,
-								"name": "1234",
-								"updatedAt": "%s"
-							}
-							],
-							"pageInfo": {
-								"hasNextPage": false,
-								"endCursor": "somevaluedoesnotmatter"
-							} }	} }	}`, sixHoursAgo.Format(time.RFC3339))))
+					fmt.Sprintf(`[
+						{
+							"description": "whatever",
+							"files": { "cicada.txt": { "filename": "cicada.txt" }, "unix.md": { "filename": "unix.md" } },
+							"public": true,
+							"id": "1234",
+							"updated_at": "%s"
+						}
+					]`, sixHoursAgo.Format(time.RFC3339))))
 			reg.Register(httpmock.REST("GET", "gists/1234"),
 				httpmock.JSONResponse(tt.mockGist))
 			reg.Register(httpmock.REST("GET", "user"),

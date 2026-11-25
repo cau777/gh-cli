@@ -614,71 +614,42 @@ func Symbol(cs *iostreams.ColorScheme, status Status, conclusion Conclusion) (st
 }
 
 func PullRequestForRun(client *api.Client, repo ghrepo.Interface, run Run) (int, error) {
-	type response struct {
-		Repository struct {
-			PullRequests struct {
-				Nodes []struct {
-					Number         int
-					HeadRepository struct {
-						Owner struct {
-							Login string
-						}
-						Name string
-					}
-				}
-			}
-		}
-		Number int
-	}
-
-	variables := map[string]any{
-		"owner":       repo.RepoOwner(),
-		"repo":        repo.RepoName(),
-		"headRefName": run.HeadBranch,
-	}
-
-	query := `
-		query PullRequestForRun($owner: String!, $repo: String!, $headRefName: String!) {
-			repository(owner: $owner, name: $repo) {
-				pullRequests(headRefName: $headRefName, first: 1, orderBy: { field: CREATED_AT, direction: DESC }) {
-					nodes {
-						number
-						headRepository {
-							owner {
-								login
-							}
-							name
-						}
-					}
-				}
-			}
-		}`
-
-	var resp response
-
-	err := client.GraphQL(repo.RepoHost(), query, variables, &resp)
+	u, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "pulls")
 	if err != nil {
 		return -1, err
 	}
-
-	prs := resp.Repository.PullRequests.Nodes
-	if len(prs) == 0 {
-		return -1, fmt.Errorf("no matching PR found for %s", run.HeadBranch)
+	u.SetQuery("state", "all")
+	u.SetQuery("per_page", "10")
+	if run.HeadRepository.Owner.Login != "" {
+		u.SetQuery("head", fmt.Sprintf("%s:%s", run.HeadRepository.Owner.Login, run.HeadBranch))
 	}
 
-	number := -1
+	var prs []struct {
+		Number int `json:"number"`
+		Head   struct {
+			Ref  string `json:"ref"`
+			Repo struct {
+				Owner struct {
+					Login string `json:"login"`
+				} `json:"owner"`
+				Name string `json:"name"`
+			} `json:"repo"`
+		} `json:"head"`
+	}
+
+	if err := client.REST(repo.RepoHost(), http.MethodGet, u.String(), nil, &prs); err != nil {
+		return -1, err
+	}
 
 	for _, pr := range prs {
-		if pr.HeadRepository.Owner.Login == run.HeadRepository.Owner.Login && pr.HeadRepository.Name == run.HeadRepository.Name {
-			number = pr.Number
+		if pr.Head.Ref == run.HeadBranch &&
+			pr.Head.Repo.Owner.Login == run.HeadRepository.Owner.Login &&
+			pr.Head.Repo.Name == run.HeadRepository.Name {
+			return pr.Number, nil
 		}
 	}
 
-	if number == -1 {
-		return number, fmt.Errorf("no matching PR found for %s", run.HeadBranch)
-	}
-
-	return number, nil
+	return -1, fmt.Errorf("no matching PR found for %s", run.HeadBranch)
 }
 
 func preciseAgo(now time.Time, createdAt time.Time) string {

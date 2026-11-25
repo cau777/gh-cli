@@ -185,34 +185,19 @@ func TestListRun(t *testing.T) {
 			opts: &listOptions{},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[
 						{
-							"data": {
-								"repository": {
-									"labels": {
-										"totalCount": 2,
-										"nodes": [
-											{
-												"name": "bug",
-												"color": "d73a4a",
-												"description": "This is a bug label"
-											},
-											{
-												"name": "docs",
-												"color": "ffa8da",
-												"description": "This is a docs label"
-											}
-										],
-										"pageInfo": {
-											"hasNextPage": false,
-											"endCursor": "Y3Vyc29yOnYyOpK5MjAxOS0xMC0xMVQwMTozODowMyswODowMM5f3HZq"
-										}
-									}
-								}
-							}
-						}`,
-					),
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "This is a bug label"
+						},
+						{
+							"name": "docs",
+							"color": "ffa8da",
+							"description": "This is a docs label"
+						}
+					]`),
 				)
 			},
 			wantStdout: heredoc.Doc(`
@@ -230,34 +215,19 @@ func TestListRun(t *testing.T) {
 			opts: &listOptions{},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[
 						{
-							"data": {
-								"repository": {
-									"labels": {
-										"totalCount": 2,
-										"nodes": [
-											{
-												"name": "bug",
-												"color": "d73a4a",
-												"description": "This is a bug label"
-											},
-											{
-												"name": "docs",
-												"color": "ffa8da",
-												"description": "This is a docs label"
-											}
-										],
-										"pageInfo": {
-											"hasNextPage": false,
-											"endCursor": "Y3Vyc29yOnYyOpK5MjAxOS0xMC0xMVQwMTozODowMyswODowMM5f3HZq"
-										}
-									}
-								}
-							}
-						}`,
-					),
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "This is a bug label"
+						},
+						{
+							"name": "docs",
+							"color": "ffa8da",
+							"description": "This is a docs label"
+						}
+					]`),
 				)
 			},
 			wantStdout: "bug\tThis is a bug label\t#d73a4a\ndocs\tThis is a docs label\t#ffa8da\n",
@@ -268,10 +238,8 @@ func TestListRun(t *testing.T) {
 			opts: &listOptions{},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-						{"data":{"repository":{"labels":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}`,
-					),
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[]`),
 				)
 			},
 			wantErr:    true,
@@ -283,10 +251,8 @@ func TestListRun(t *testing.T) {
 			opts: &listOptions{Query: listQueryOptions{Query: "test"}},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.StringResponse(`
-						{"data":{"repository":{"labels":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}`,
-					),
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[]`),
 				)
 			},
 			wantErr:    true,
@@ -310,40 +276,19 @@ func TestListRun(t *testing.T) {
 			},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query LabelList\b`),
-					httpmock.GraphQLQuery(`
-					{
-						"data": {
-							"repository": {
-								"labels": {
-									"totalCount": 2,
-									"nodes": [
-										{
-											"name": "bug",
-											"color": "d73a4a",
-											"description": "This is a bug label",
-											"createdAt": "2022-04-20T06:17:50Z"
-										},
-										{
-											"name": "docs",
-											"color": "ffa8da",
-											"description": "This is a docs label",
-											"createdAt": "2022-04-20T06:17:49Z"
-										}
-									],
-									"pageInfo": {
-										"hasNextPage": false,
-										"endCursor": "Y3Vyc29yOnYyOpK5MjAxOS0xMC0xMVQwMTozODowMyswODowMM5f3HZq"
-									}
-								}
-							}
+					httpmock.REST("GET", "repos/OWNER/REPO/labels"),
+					httpmock.StringResponse(`[
+						{
+							"name": "docs",
+							"color": "ffa8da",
+							"description": "This is a docs label"
+						},
+						{
+							"name": "bug",
+							"color": "d73a4a",
+							"description": "This is a bug label"
 						}
-					}`, func(s string, m map[string]any) {
-						assert.Equal(t, "OWNER", m["owner"])
-						assert.Equal(t, "REPO", m["repo"])
-						assert.Equal(t, float64(30), m["limit"].(float64))
-						assert.Equal(t, map[string]any{"direction": "ASC", "field": "NAME"}, m["orderBy"])
-					}),
+					]`),
 				)
 			},
 			wantStdout: heredoc.Doc(`

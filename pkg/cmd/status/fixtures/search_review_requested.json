@@ -1,0 +1,39 @@
+{
+  "items": [
+    {
+      "updated_at": "2022-03-15T17:10:25Z",
+      "pull_request": {},
+      "title": "Pin extensions",
+      "number": 5272,
+      "repository_url": "https://api.github.com/repos/cli/cli"
+    },
+    {
+      "updated_at": "2022-02-18T19:38:20Z",
+      "pull_request": {},
+      "title": "Foobar",
+      "number": 1234,
+      "repository_url": "https://api.github.com/repos/vilmibm/testing"
+    },
+    {
+      "updated_at": "2022-02-04T06:56:48Z",
+      "pull_request": {},
+      "title": "Welcome party for Leon",
+      "number": 50,
+      "repository_url": "https://api.github.com/repos/rpd/todo"
+    },
+    {
+      "updated_at": "2021-12-20T10:30:39Z",
+      "pull_request": {},
+      "title": "Haircut for Leon",
+      "number": 49,
+      "repository_url": "https://api.github.com/repos/rpd/todo"
+    },
+    {
+      "updated_at": "2021-12-20T16:43:15Z",
+      "pull_request": {},
+      "title": "This pull request adds support for json output the to `gh pr checks` …",
+      "number": 4671,
+      "repository_url": "https://api.github.com/repos/cli/cli"
+    }
+  ]
+}

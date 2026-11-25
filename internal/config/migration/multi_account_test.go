@@ -138,8 +138,8 @@ hosts:
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query CurrentUser\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`),
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"monalisa"}`),
 	)
 
 	m := migration.MultiAccountDeprecated{Transport: reg}
@@ -178,8 +178,8 @@ hosts:
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query CurrentUser\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`),
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"monalisa"}`),
 	)
 
 	m := migration.MultiAccountDeprecated{Transport: reg}

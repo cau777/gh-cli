@@ -200,8 +200,8 @@ func TestLogin(t *testing.T) {
 					httpmock.REST("GET", "api/v3/"),
 					httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{ "login": "monalisa" }}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 				reg.Register(
 					httpmock.REST("GET", "api/v3/user/keys"),
 					httpmock.StringResponse(`[]`))
@@ -280,8 +280,8 @@ func TestLogin(t *testing.T) {
 					httpmock.REST("GET", "api/v3/"),
 					httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{ "login": "monalisa" }}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 				reg.Register(
 					httpmock.REST("GET", "api/v3/user/keys"),
 					httpmock.StringResponse(`[]`))
@@ -351,8 +351,8 @@ func TestLogin(t *testing.T) {
 					httpmock.REST("GET", "api/v3/"),
 					httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{ "login": "monalisa" }}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantsConfig: map[string]string{
 				"example.com:user":         "monalisa",
@@ -584,8 +584,8 @@ func TestAuthenticatingGitCredentials(t *testing.T) {
 		httpmock.REST("GET", "api/v3/"),
 		httpmock.ScopesResponder("repo,read:org"))
 	reg.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{ "login": "monalisa" }}}`))
+		httpmock.REST("GET", "api/v3/user"),
+		httpmock.StringResponse(`{"login":"monalisa"}`))
 
 	opts := &LoginOptions{
 		IO:          ios,
@@ -638,8 +638,8 @@ func TestLogin_pastedTokenIgnoresConfiguredExpiringPreference(t *testing.T) {
 		httpmock.REST("GET", ""),
 		httpmock.ScopesResponder("repo,read:org"))
 	reg.Register(
-		httpmock.GraphQL(`query UserCurrent\b`),
-		httpmock.StringResponse(`{"data":{"viewer":{ "login": "monalisa" }}}`))
+		httpmock.REST("GET", "user"),
+		httpmock.StringResponse(`{"login":"monalisa"}`))
 
 	opts := &LoginOptions{
 		IO:          ios,

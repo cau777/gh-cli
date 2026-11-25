@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +15,6 @@ import (
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/httpmock"
-	"github.com/shurcooL/githubv4"
-	"github.com/stretchr/testify/assert"
 )
 
 var ReleaseFields = []string{
@@ -235,38 +232,56 @@ func FetchLatestRelease(ctx context.Context, httpClient *http.Client, repo ghrep
 
 // fetchDraftRelease returns the first draft release that has tagName as its pending tag.
 func fetchDraftRelease(ctx context.Context, httpClient *http.Client, repo ghrepo.Interface, tagName string) (*Release, error) {
-	// First use GraphQL to find a draft release by pending tag name, since REST doesn't have this ability.
-	var query struct {
-		Repository struct {
-			Release *struct {
-				DatabaseID int64
-				IsDraft    bool
-			} `graphql:"release(tagName: $tagName)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	variables := map[string]any{
-		"owner":   githubv4.String(repo.RepoOwner()),
-		"name":    githubv4.String(repo.RepoName()),
-		"tagName": githubv4.String(tagName),
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-	if err := gql.QueryWithContext(ctx, repo.RepoHost(), "RepositoryReleaseByTag", &query, variables); err != nil {
-		return nil, err
-	}
-
-	if query.Repository.Release == nil || !query.Repository.Release.IsDraft {
-		return nil, ErrReleaseNotFound
-	}
-
-	// Then, use REST to get information about the draft release. In theory, we could have fetched
-	// all the necessary information via GraphQL, but REST is safer for backwards compatibility.
-	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "releases", strconv.FormatInt(query.Repository.Release.DatabaseID, 10))
+	u, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "releases")
 	if err != nil {
 		return nil, err
 	}
-	return fetchReleasePath(ctx, httpClient, repo.RepoHost(), path)
+	u.SetQuery("per_page", "100")
+
+	apiClient := api.NewClientFromHTTP(httpClient)
+	nextPath := u.String()
+	for nextPath != "" {
+		resp, err := apiClient.RequestWithContext(ctx, repo.RepoHost(), http.MethodGet, nextPath, nil)
+		if err != nil {
+			if isNotFound(err) {
+				return nil, ErrReleaseNotFound
+			}
+			return nil, err
+		}
+
+		var releases []Release
+		decodeErr := json.NewDecoder(resp.Body).Decode(&releases)
+		next := nextLinkFromHeader(resp.Header.Get("Link"))
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+
+		for i := range releases {
+			if releases[i].IsDraft && releases[i].TagName == tagName {
+				return &releases[i], nil
+			}
+		}
+
+		nextPath = next
+	}
+
+	return nil, ErrReleaseNotFound
+}
+
+func nextLinkFromHeader(linkHeader string) string {
+	for part := range strings.SplitSeq(linkHeader, ",") {
+		part = strings.TrimSpace(part)
+		if !strings.Contains(part, `rel="next"`) {
+			continue
+		}
+		start := strings.Index(part, "<")
+		end := strings.Index(part, ">")
+		if start >= 0 && end > start {
+			return part[start+1 : end]
+		}
+	}
+	return ""
 }
 
 func fetchReleasePath(ctx context.Context, httpClient *http.Client, host string, path safeurl.SafeURL) (*Release, error) {
@@ -308,13 +323,8 @@ func StubFetchRelease(t *testing.T, reg *httpmock.Registry, owner, repoName, tag
 
 	if tagName != "" {
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryReleaseByTag\b`),
-			httpmock.GraphQLQuery(`{ "data": { "repository": { "release": null }}}`,
-				func(q string, vars map[string]any) {
-					assert.Equal(t, owner, vars["owner"])
-					assert.Equal(t, repoName, vars["name"])
-					assert.Equal(t, tagName, vars["tagName"])
-				}),
+			httpmock.REST("GET", fmt.Sprintf("repos/%s/%s/releases", owner, repoName)),
+			httpmock.StringResponse(`[]`),
 		)
 	}
 }

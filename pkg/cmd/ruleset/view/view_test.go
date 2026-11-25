@@ -10,7 +10,6 @@ import (
 	"github.com/cli/cli/v2/internal/browser"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/prompter"
-	"github.com/cli/cli/v2/pkg/cmd/ruleset/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/httpmock"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -243,11 +242,8 @@ func Test_viewRun(t *testing.T) {
 			wantStdout: "",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepoRulesetList\b`),
-					httpmock.JSONResponse(shared.RulesetList{
-						TotalCount: 0,
-						Rulesets:   []shared.RulesetGraphQL{},
-					}),
+					httpmock.REST("GET", "repos/my-owner/repo-name/rulesets"),
+					httpmock.StringResponse(`[]`),
 				)
 			},
 			wantErr:    "no rulesets found in my-owner/repo-name",
@@ -264,11 +260,8 @@ func Test_viewRun(t *testing.T) {
 			wantStdout: "",
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query OrgRulesetList\b`),
-					httpmock.JSONResponse(shared.RulesetList{
-						TotalCount: 0,
-						Rulesets:   []shared.RulesetGraphQL{},
-					}),
+					httpmock.REST("GET", "orgs/my-owner/rulesets"),
+					httpmock.StringResponse(`[]`),
 				)
 			},
 			wantErr:    "no rulesets found in my-owner",
@@ -284,7 +277,7 @@ func Test_viewRun(t *testing.T) {
 			wantStdout: repoRulesetStdout,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepoRulesetList\b`),
+					httpmock.REST("GET", "repos/my-owner/repo-name/rulesets"),
 					httpmock.FileResponse("./fixtures/rulesetViewMultiple.json"),
 				)
 				reg.Register(

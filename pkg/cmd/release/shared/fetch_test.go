@@ -173,8 +173,8 @@ func TestFetchReleaseNotFoundWhenBothLookupsMiss(t *testing.T) {
 		httpmock.JSONErrorResponse(404, api.HTTPError{StatusCode: 404, Message: "Not Found"}),
 	)
 	fakeHTTP.Register(
-		httpmock.GraphQL(`query RepositoryReleaseByTag\b`),
-		httpmock.StringResponse(`{"data": {"repository": {"release": null}}}`),
+		httpmock.REST("GET", "repos/owner/repo/releases"),
+		httpmock.StringResponse(`[]`),
 	)
 
 	_, err = FetchRelease(context.Background(), &http.Client{Transport: fakeHTTP}, repo, "v9.9.9")

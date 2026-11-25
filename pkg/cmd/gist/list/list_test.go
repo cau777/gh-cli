@@ -130,7 +130,6 @@ func TestNewCmdList(t *testing.T) {
 }
 
 func Test_listRun(t *testing.T) {
-	const query = `query GistList\b`
 	sixHours, _ := time.ParseDuration("6h")
 	sixHoursAgo := time.Now().Add(-sixHours)
 	absTime, _ := time.Parse(time.RFC3339, "2020-07-30T15:24:28Z")
@@ -149,10 +148,8 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{},
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
-					httpmock.StringResponse(`{ "data": { "viewer": {
-						"gists": { "nodes": [] }
-					} } }`))
+					httpmock.REST("GET", "gists"),
+					httpmock.StringResponse(`[]`))
 			},
 			wantErr: true,
 		},
@@ -161,53 +158,53 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{},
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234567890",
-								"files": [{ "name": "cool.txt" }],
+								"id": "1234567890",
+								"files": { "cool.txt": { "filename": "cool.txt" } },
 								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "4567890123",
-								"files": [{ "name": "gistfile0.txt" }],
+								"id": "4567890123",
+								"files": { "gistfile0.txt": { "filename": "gistfile0.txt" } },
 								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "2345678901",
-								"files": [
-									{ "name": "gistfile0.txt" },
-									{ "name": "gistfile1.txt" }
-								],
+								"id": "2345678901",
+								"files": {
+									"gistfile0.txt": { "filename": "gistfile0.txt" },
+									"gistfile1.txt": { "filename": "gistfile1.txt" }
+								},
 								"description": "tea leaves thwart those who court catastrophe",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456789012",
-								"files": [
-									{ "name": "gistfile0.txt" },
-									{ "name": "gistfile1.txt" },
-									{ "name": "gistfile2.txt" },
-									{ "name": "gistfile3.txt" },
-									{ "name": "gistfile4.txt" },
-									{ "name": "gistfile5.txt" },
-									{ "name": "gistfile6.txt" },
-									{ "name": "gistfile7.txt" },
-									{ "name": "gistfile9.txt" },
-									{ "name": "gistfile10.txt" },
-									{ "name": "gistfile11.txt" }
-								],
+								"id": "3456789012",
+								"files": {
+									"gistfile0.txt": { "filename": "gistfile0.txt" },
+									"gistfile1.txt": { "filename": "gistfile1.txt" },
+									"gistfile2.txt": { "filename": "gistfile2.txt" },
+									"gistfile3.txt": { "filename": "gistfile3.txt" },
+									"gistfile4.txt": { "filename": "gistfile4.txt" },
+									"gistfile5.txt": { "filename": "gistfile5.txt" },
+									"gistfile6.txt": { "filename": "gistfile6.txt" },
+									"gistfile7.txt": { "filename": "gistfile7.txt" },
+									"gistfile9.txt": { "filename": "gistfile9.txt" },
+									"gistfile10.txt": { "filename": "gistfile10.txt" },
+									"gistfile11.txt": { "filename": "gistfile11.txt" }
+								},
 								"description": "short desc",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							}
-						] } } } }`,
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)
@@ -225,24 +222,24 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{Visibility: "public"},
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234567890",
-								"files": [{ "name": "cool.txt" }],
+								"id": "1234567890",
+								"files": { "cool.txt": { "filename": "cool.txt" } },
 								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "4567890123",
-								"files": [{ "name": "gistfile0.txt" }],
+								"id": "4567890123",
+								"files": { "gistfile0.txt": { "filename": "gistfile0.txt" } },
 								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							}
-						] } } } }`,
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)
@@ -258,39 +255,39 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{Visibility: "secret"},
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "2345678901",
-								"files": [
-									{ "name": "gistfile0.txt" },
-									{ "name": "gistfile1.txt" }
-								],
+								"id": "2345678901",
+								"files": {
+									"gistfile0.txt": { "filename": "gistfile0.txt" },
+									"gistfile1.txt": { "filename": "gistfile1.txt" }
+								},
 								"description": "tea leaves thwart those who court catastrophe",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456789012",
-								"files": [
-									{ "name": "gistfile0.txt" },
-									{ "name": "gistfile1.txt" },
-									{ "name": "gistfile2.txt" },
-									{ "name": "gistfile3.txt" },
-									{ "name": "gistfile4.txt" },
-									{ "name": "gistfile5.txt" },
-									{ "name": "gistfile6.txt" },
-									{ "name": "gistfile7.txt" },
-									{ "name": "gistfile9.txt" },
-									{ "name": "gistfile10.txt" },
-									{ "name": "gistfile11.txt" }
-								],
+								"id": "3456789012",
+								"files": {
+									"gistfile0.txt": { "filename": "gistfile0.txt" },
+									"gistfile1.txt": { "filename": "gistfile1.txt" },
+									"gistfile2.txt": { "filename": "gistfile2.txt" },
+									"gistfile3.txt": { "filename": "gistfile3.txt" },
+									"gistfile4.txt": { "filename": "gistfile4.txt" },
+									"gistfile5.txt": { "filename": "gistfile5.txt" },
+									"gistfile6.txt": { "filename": "gistfile6.txt" },
+									"gistfile7.txt": { "filename": "gistfile7.txt" },
+									"gistfile9.txt": { "filename": "gistfile9.txt" },
+									"gistfile10.txt": { "filename": "gistfile10.txt" },
+									"gistfile11.txt": { "filename": "gistfile11.txt" }
+								},
 								"description": "short desc",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							}
-						] } } } }`,
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)
@@ -306,17 +303,17 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{Limit: 1},
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234567890",
-								"files": [{ "name": "cool.txt" }],
+								"id": "1234567890",
+								"files": { "cool.txt": { "filename": "cool.txt" } },
 								"description": "",
-								"updatedAt": "%v",
-								"isPublic": true
+								"updated_at": "%v",
+								"public": true
 							}
-						] } } } }`,
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)
@@ -331,53 +328,53 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{},
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234567890",
-								"files": [{ "name": "cool.txt" }],
+								"id": "1234567890",
+								"files": { "cool.txt": { "filename": "cool.txt" } },
 								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "4567890123",
-								"files": [{ "name": "gistfile0.txt" }],
+								"id": "4567890123",
+								"files": { "gistfile0.txt": { "filename": "gistfile0.txt" } },
 								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "2345678901",
-								"files": [
-									{ "name": "gistfile0.txt" },
-									{ "name": "gistfile1.txt" }
-								],
+								"id": "2345678901",
+								"files": {
+									"gistfile0.txt": { "filename": "gistfile0.txt" },
+									"gistfile1.txt": { "filename": "gistfile1.txt" }
+								},
 								"description": "tea leaves thwart those who court catastrophe",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456789012",
-								"files": [
-									{ "name": "gistfile0.txt" },
-									{ "name": "gistfile1.txt" },
-									{ "name": "gistfile2.txt" },
-									{ "name": "gistfile3.txt" },
-									{ "name": "gistfile4.txt" },
-									{ "name": "gistfile5.txt" },
-									{ "name": "gistfile6.txt" },
-									{ "name": "gistfile7.txt" },
-									{ "name": "gistfile9.txt" },
-									{ "name": "gistfile10.txt" },
-									{ "name": "gistfile11.txt" }
-								],
+								"id": "3456789012",
+								"files": {
+									"gistfile0.txt": { "filename": "gistfile0.txt" },
+									"gistfile1.txt": { "filename": "gistfile1.txt" },
+									"gistfile2.txt": { "filename": "gistfile2.txt" },
+									"gistfile3.txt": { "filename": "gistfile3.txt" },
+									"gistfile4.txt": { "filename": "gistfile4.txt" },
+									"gistfile5.txt": { "filename": "gistfile5.txt" },
+									"gistfile6.txt": { "filename": "gistfile6.txt" },
+									"gistfile7.txt": { "filename": "gistfile7.txt" },
+									"gistfile9.txt": { "filename": "gistfile9.txt" },
+									"gistfile10.txt": { "filename": "gistfile10.txt" },
+									"gistfile11.txt": { "filename": "gistfile11.txt" }
+								},
 								"description": "short desc",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							}
-						] } } } }`,
+						]`,
 						absTime.Format(time.RFC3339),
 					)),
 				)
@@ -399,38 +396,38 @@ func Test_listRun(t *testing.T) {
 			nontty: true,
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234",
-								"files": [
-									{ "name": "main.txt", "text": "foo" }
-								],
+								"id": "1234",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" }
+								},
 								"description": "octo match in the description",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "2345",
-								"files": [
-									{ "name": "main.txt", "text": "foo" },
-									{ "name": "octo.txt", "text": "bar" }
-								],
+								"id": "2345",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" },
+									"octo.txt": { "filename": "octo.txt", "content": "bar" }
+								},
 								"description": "match in the file name",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456",
-								"files": [
-									{ "name": "main.txt", "text": "octo in the text" }
-								],
+								"id": "3456",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "octo in the text" }
+								},
 								"description": "match in the file text",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							}
-						] } } } }`,
+						]`,
 						absTime.Format(time.RFC3339),
 					)),
 				)
@@ -449,38 +446,38 @@ func Test_listRun(t *testing.T) {
 			color: true,
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234",
-								"files": [
-									{ "name": "main.txt", "text": "foo" }
-								],
+								"id": "1234",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" }
+								},
 								"description": "octo match in the description",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "2345",
-								"files": [
-									{ "name": "main.txt", "text": "foo" },
-									{ "name": "octo.txt", "text": "bar" }
-								],
+								"id": "2345",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" },
+									"octo.txt": { "filename": "octo.txt", "content": "bar" }
+								},
 								"description": "match in the file name",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456",
-								"files": [
-									{ "name": "main.txt", "text": "octo in the text" }
-								],
+								"id": "3456",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "octo in the text" }
+								},
 								"description": "match in the file text",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							}
-						] } } } }`,
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)
@@ -501,38 +498,38 @@ func Test_listRun(t *testing.T) {
 			nontty: true,
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234",
-								"files": [
-									{ "name": "main.txt", "text": "foo" }
-								],
+								"id": "1234",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" }
+								},
 								"description": "octo match in the description",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "2345",
-								"files": [
-									{ "name": "main.txt", "text": "foo" },
-									{ "name": "octo.txt", "text": "bar" }
-								],
+								"id": "2345",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" },
+									"octo.txt": { "filename": "octo.txt", "content": "bar" }
+								},
 								"description": "match in the file name",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456",
-								"files": [
-									{ "name": "main.txt", "text": "octo in the text" }
-								],
+								"id": "3456",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "octo in the text" }
+								},
 								"description": "match in the file text",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							}
-						] } } } }`,
+						]`,
 						absTime.Format(time.RFC3339),
 					)),
 				)
@@ -560,38 +557,38 @@ func Test_listRun(t *testing.T) {
 			color: true,
 			stubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(query),
+					httpmock.REST("GET", "gists"),
 					httpmock.StringResponse(fmt.Sprintf(
-						`{ "data": { "viewer": { "gists": { "nodes": [
+						`[
 							{
-								"name": "1234",
-								"files": [
-									{ "name": "main.txt", "text": "foo" }
-								],
+								"id": "1234",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" }
+								},
 								"description": "octo match in the description",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							},
 							{
-								"name": "2345",
-								"files": [
-									{ "name": "main.txt", "text": "foo" },
-									{ "name": "octo.txt", "text": "bar" }
-								],
+								"id": "2345",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "foo" },
+									"octo.txt": { "filename": "octo.txt", "content": "bar" }
+								},
 								"description": "match in the file name",
-								"updatedAt": "%[1]v",
-								"isPublic": false
+								"updated_at": "%[1]v",
+								"public": false
 							},
 							{
-								"name": "3456",
-								"files": [
-									{ "name": "main.txt", "text": "octo in the text" }
-								],
+								"id": "3456",
+								"files": {
+									"main.txt": { "filename": "main.txt", "content": "octo in the text" }
+								},
 								"description": "match in the file text",
-								"updatedAt": "%[1]v",
-								"isPublic": true
+								"updated_at": "%[1]v",
+								"public": true
 							}
-						] } } } }`,
+						]`,
 						sixHoursAgo.Format(time.RFC3339),
 					)),
 				)

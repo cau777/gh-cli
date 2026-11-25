@@ -125,114 +125,98 @@ func Test_listRun(t *testing.T) {
 	httpStubs := func(createdAt time.Time) func(t *testing.T, reg *httpmock.Registry) {
 		return func(t *testing.T, reg *httpmock.Registry) {
 			reg.Register(
-				httpmock.GraphQL(`\bRepositoryReleaseList\(`),
-				httpmock.GraphQLQuery(
-					fmt.Sprintf(`
-						{ "data": { "repository": { "releases": {
-							"nodes": [
-								{
-									"name": "",
-									"tagName": "v1.1.0",
-									"isLatest": false,
-									"isDraft": true,
-									"isPrerelease": false,
-									"immutable": false,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								},
-								{
-									"name": "The big 1.0",
-									"tagName": "v1.0.0",
-									"isLatest": true,
-									"isDraft": false,
-									"isPrerelease": false,
-									"immutable": false,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								},
-								{
-									"name": "1.0 release candidate",
-									"tagName": "v1.0.0-pre.2",
-									"isLatest": false,
-									"isDraft": false,
-									"isPrerelease": true,
-									"immutable": true,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								},
-								{
-									"name": "New features",
-									"tagName": "v0.9.2",
-									"isLatest": false,
-									"isDraft": false,
-									"isPrerelease": false,
-									"immutable": true,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								}
-							]
-						} } } }`, createdAt.Format(time.RFC3339)),
-					func(s string, m map[string]any) {
-						// Assert "immutable" field is requested
-						assert.Regexp(t, `\bimmutable\b`, s)
-					},
+				httpmock.REST("GET", "repos/OWNER/REPO/releases/latest"),
+				httpmock.StringResponse(`{"tag_name": "v1.0.0"}`),
+			)
+			reg.Register(
+				httpmock.REST("GET", "repos/OWNER/REPO/releases"),
+				httpmock.StringResponse(
+					fmt.Sprintf(`[
+						{
+							"name": "",
+							"tag_name": "v1.1.0",
+							"draft": true,
+							"prerelease": false,
+							"immutable": false,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						},
+						{
+							"name": "The big 1.0",
+							"tag_name": "v1.0.0",
+							"draft": false,
+							"prerelease": false,
+							"immutable": false,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						},
+						{
+							"name": "1.0 release candidate",
+							"tag_name": "v1.0.0-pre.2",
+							"draft": false,
+							"prerelease": true,
+							"immutable": true,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						},
+						{
+							"name": "New features",
+							"tag_name": "v0.9.2",
+							"draft": false,
+							"prerelease": false,
+							"immutable": true,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						}
+					]`, createdAt.Format(time.RFC3339)),
 				),
 			)
 		}
 	}
 
-	// TODO: immutableReleaseFullSupport
-	// Delete this when covered GHES versions support immutable releases.
 	httpStubsWithoutImmutableReleases := func(createdAt time.Time) func(t *testing.T, reg *httpmock.Registry) {
 		return func(t *testing.T, reg *httpmock.Registry) {
 			reg.Register(
-				httpmock.GraphQL(`\bRepositoryReleaseList\(`),
-				httpmock.GraphQLQuery(
-					fmt.Sprintf(`
-						{ "data": { "repository": { "releases": {
-							"nodes": [
-								{
-									"name": "",
-									"tagName": "v1.1.0",
-									"isLatest": false,
-									"isDraft": true,
-									"isPrerelease": false,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								},
-								{
-									"name": "The big 1.0",
-									"tagName": "v1.0.0",
-									"isLatest": true,
-									"isDraft": false,
-									"isPrerelease": false,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								},
-								{
-									"name": "1.0 release candidate",
-									"tagName": "v1.0.0-pre.2",
-									"isLatest": false,
-									"isDraft": false,
-									"isPrerelease": true,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								},
-								{
-									"name": "New features",
-									"tagName": "v0.9.2",
-									"isLatest": false,
-									"isDraft": false,
-									"isPrerelease": false,
-									"createdAt": "%[1]s",
-									"publishedAt": "%[1]s"
-								}
-							]
-						} } } }`, createdAt.Format(time.RFC3339)),
-					func(s string, m map[string]any) {
-						// Assert "immutable" field is NOT requested
-						assert.NotRegexp(t, `\bimmutable\b`, s)
-					},
+				httpmock.REST("GET", "repos/OWNER/REPO/releases/latest"),
+				httpmock.StringResponse(`{"tag_name": "v1.0.0"}`),
+			)
+			reg.Register(
+				httpmock.REST("GET", "repos/OWNER/REPO/releases"),
+				httpmock.StringResponse(
+					fmt.Sprintf(`[
+						{
+							"name": "",
+							"tag_name": "v1.1.0",
+							"draft": true,
+							"prerelease": false,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						},
+						{
+							"name": "The big 1.0",
+							"tag_name": "v1.0.0",
+							"draft": false,
+							"prerelease": false,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						},
+						{
+							"name": "1.0 release candidate",
+							"tag_name": "v1.0.0-pre.2",
+							"draft": false,
+							"prerelease": true,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						},
+						{
+							"name": "New features",
+							"tag_name": "v0.9.2",
+							"draft": false,
+							"prerelease": false,
+							"created_at": "%[1]s",
+							"published_at": "%[1]s"
+						}
+					]`, createdAt.Format(time.RFC3339)),
 				),
 			)
 		}

@@ -1,15 +1,18 @@
 package list
 
 import (
+	"errors"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cli/cli/v2/api"
 	fd "github.com/cli/cli/v2/internal/featuredetection"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 	"github.com/cli/cli/v2/pkg/cmdutil"
-	"github.com/shurcooL/githubv4"
 )
 
 var releaseFields = []string{
@@ -27,7 +30,7 @@ type Release struct {
 	Name         string
 	TagName      string
 	IsDraft      bool
-	IsImmutable  bool `graphql:"immutable"`
+	IsImmutable  bool
 	IsLatest     bool
 	IsPrerelease bool
 	CreatedAt    time.Time
@@ -38,160 +41,86 @@ func (r *Release) ExportData(fields []string) map[string]any {
 	return cmdutil.StructExportData(r, fields)
 }
 
-func fetchReleases(httpClient *http.Client, repo ghrepo.Interface, limit int, excludeDrafts bool, excludePreReleases bool, order string, releaseFeatures fd.ReleaseFeatures) ([]Release, error) {
-	// TODO: immutableReleaseFullSupport
-	// This is a temporary workaround until all supported GHES versions fully
-	// support immutable releases, which would probably be when GHES 3.18 goes
-	// EOL. At that point we can remove this if statement.
-	//
-	// Note 1: This could have been done differently by using two separate query
-	// types or even using plain text/string queries. But, both would require us
-	// to refactor them back in the future, to the single, strongly-typed query
-	// approach as it was before. So, duplicating the entire function for now
-	// seems like the lesser evil, with a quicker and less risky clean up in the
-	// near future.
-	//
-	// Note 2: We couldn't use GraphQL directives like `@include(condition)` or
-	// `@skip(condition)` here because if the field doesn't exist on the schema
-	// then the whole query would still fail regardless of the condition being
-	// met or not.
-	// TODO immutableReleaseFullSupport
-	if !releaseFeatures.ImmutableReleases {
-		return fetchReleasesWithoutImmutableReleases(httpClient, repo, limit, excludeDrafts, excludePreReleases, order)
-	}
-
-	type responseData struct {
-		Repository struct {
-			Releases struct {
-				Nodes    []Release
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"releases(first: $perPage, orderBy: {field: CREATED_AT, direction: $direction}, after: $endCursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	perPage := min(limit, 100)
-
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"perPage":   githubv4.Int(perPage),
-		"endCursor": (*githubv4.String)(nil),
-		"direction": githubv4.OrderDirection(strings.ToUpper(order)),
-	}
-
-	gql := api.NewClientFromHTTP(httpClient)
-
-	var releases []Release
-loop:
-	for {
-		var query responseData
-		err := gql.Query(repo.RepoHost(), "RepositoryReleaseList", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, r := range query.Repository.Releases.Nodes {
-			if excludeDrafts && r.IsDraft {
-				continue
-			}
-			if excludePreReleases && r.IsPrerelease {
-				continue
-			}
-			releases = append(releases, r)
-			if len(releases) == limit {
-				break loop
-			}
-		}
-
-		if !query.Repository.Releases.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Repository.Releases.PageInfo.EndCursor)
-	}
-
-	return releases, nil
+type restRelease struct {
+	Name         string    `json:"name"`
+	TagName      string    `json:"tag_name"`
+	IsDraft      bool      `json:"draft"`
+	IsImmutable  bool      `json:"immutable"`
+	IsPrerelease bool      `json:"prerelease"`
+	CreatedAt    time.Time `json:"created_at"`
+	PublishedAt  time.Time `json:"published_at"`
 }
 
-// TODO: immutableReleaseFullSupport
-// This is a temporary workaround until all supported GHES versions fully
-// support immutable releases, which would be when GHES 3.18 goes EOL. At that
-// point we can remove this function.
-func fetchReleasesWithoutImmutableReleases(httpClient *http.Client, repo ghrepo.Interface, limit int, excludeDrafts bool, excludePreReleases bool, order string) ([]Release, error) {
-	type releaseOld struct {
-		Name         string
-		TagName      string
-		IsDraft      bool
-		IsLatest     bool
-		IsPrerelease bool
-		CreatedAt    time.Time
-		PublishedAt  time.Time
-	}
+func fetchReleases(httpClient *http.Client, repo ghrepo.Interface, limit int, excludeDrafts bool, excludePreReleases bool, order string, _ fd.ReleaseFeatures) ([]Release, error) {
+	client := api.NewClientFromHTTP(httpClient)
 
-	fromReleaseOld := func(old releaseOld) Release {
-		return Release{
-			Name:         old.Name,
-			TagName:      old.TagName,
-			IsDraft:      old.IsDraft,
-			IsLatest:     old.IsLatest,
-			IsPrerelease: old.IsPrerelease,
-			CreatedAt:    old.CreatedAt,
-			PublishedAt:  old.PublishedAt,
+	latestTag := ""
+	latestPath, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "releases", "latest")
+	if err != nil {
+		return nil, err
+	}
+	var latest restRelease
+	if err := client.REST(repo.RepoHost(), http.MethodGet, latestPath.String(), nil, &latest); err == nil {
+		latestTag = latest.TagName
+	} else {
+		var httpErr api.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound {
+			return nil, err
 		}
 	}
 
-	type responseData struct {
-		Repository struct {
-			Releases struct {
-				Nodes    []releaseOld
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"releases(first: $perPage, orderBy: {field: CREATED_AT, direction: $direction}, after: $endCursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
+	u, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "releases")
+	if err != nil {
+		return nil, err
 	}
-
-	perPage := min(limit, 100)
-
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"perPage":   githubv4.Int(perPage),
-		"endCursor": (*githubv4.String)(nil),
-		"direction": githubv4.OrderDirection(strings.ToUpper(order)),
+	perPage := 100
+	ascOrder := strings.EqualFold(order, "asc")
+	if !ascOrder && !excludeDrafts && !excludePreReleases && limit > 0 && limit < 100 {
+		perPage = limit
 	}
-
-	gql := api.NewClientFromHTTP(httpClient)
+	u.SetQuery("per_page", strconv.Itoa(perPage))
 
 	var releases []Release
-loop:
-	for {
-		var query responseData
-		err := gql.Query(repo.RepoHost(), "RepositoryReleaseList", &query, variables)
+	nextPath := u.String()
+	for nextPath != "" {
+		var page []restRelease
+		next, err := client.RESTWithNext(repo.RepoHost(), http.MethodGet, nextPath, nil, &page)
 		if err != nil {
 			return nil, err
 		}
 
-		for _, r := range query.Repository.Releases.Nodes {
+		for _, r := range page {
 			if excludeDrafts && r.IsDraft {
 				continue
 			}
 			if excludePreReleases && r.IsPrerelease {
 				continue
 			}
-			releases = append(releases, fromReleaseOld(r))
-			if len(releases) == limit {
-				break loop
+			releases = append(releases, Release{
+				Name:         r.Name,
+				TagName:      r.TagName,
+				IsDraft:      r.IsDraft,
+				IsImmutable:  r.IsImmutable,
+				IsLatest:     latestTag != "" && !r.IsDraft && !r.IsPrerelease && r.TagName == latestTag,
+				IsPrerelease: r.IsPrerelease,
+				CreatedAt:    r.CreatedAt,
+				PublishedAt:  r.PublishedAt,
+			})
+			if !ascOrder && len(releases) == limit {
+				return releases, nil
 			}
 		}
 
-		if !query.Repository.Releases.PageInfo.HasNextPage {
-			break
+		nextPath = next
+	}
+
+	if ascOrder {
+		slices.SortStableFunc(releases, func(a, b Release) int {
+			return a.CreatedAt.Compare(b.CreatedAt)
+		})
+		if limit > 0 && len(releases) > limit {
+			releases = releases[:limit]
 		}
-		variables["endCursor"] = githubv4.String(query.Repository.Releases.PageInfo.EndCursor)
 	}
 
 	return releases, nil

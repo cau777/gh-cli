@@ -3,6 +3,7 @@ package shared
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,22 +115,22 @@ func TestPromptGists(t *testing.T) {
 						return prompter.IndexFor(opts, "cool.txt  about 6 hours ago")
 					})
 			},
-			response: `{ "data": { "viewer": { "gists": { "nodes": [
-							{
-								"name": "1234",
-								"files": [{ "name": "cool.txt" }],
-								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
-							},
-							{
-								"name": "5678",
-								"files": [{ "name": "gistfile0.txt" }],
-								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
-							}
-						] } } } }`,
+			response: `[
+				{
+					"id": "1234",
+					"files": { "cool.txt": { "filename": "cool.txt" } },
+					"description": "",
+					"updated_at": "%[1]v",
+					"public": true
+				},
+				{
+					"id": "5678",
+					"files": { "gistfile0.txt": { "filename": "gistfile0.txt" } },
+					"description": "",
+					"updated_at": "%[1]v",
+					"public": true
+				}
+			]`,
 			wantOut: Gist{ID: "1234", Files: map[string]*GistFile{"cool.txt": {Filename: "cool.txt"}}, UpdatedAt: sixHoursAgo, Public: true},
 		},
 		{
@@ -141,27 +142,27 @@ func TestPromptGists(t *testing.T) {
 						return prompter.IndexFor(opts, "gistfile0.txt  about 6 hours ago")
 					})
 			},
-			response: `{ "data": { "viewer": { "gists": { "nodes": [
-							{
-								"name": "1234",
-								"files": [{ "name": "cool.txt" }],
-								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
-							},
-							{
-								"name": "5678",
-								"files": [{ "name": "gistfile0.txt" }],
-								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
-							}
-						] } } } }`,
+			response: `[
+				{
+					"id": "1234",
+					"files": { "cool.txt": { "filename": "cool.txt" } },
+					"description": "",
+					"updated_at": "%[1]v",
+					"public": true
+				},
+				{
+					"id": "5678",
+					"files": { "gistfile0.txt": { "filename": "gistfile0.txt" } },
+					"description": "",
+					"updated_at": "%[1]v",
+					"public": true
+				}
+			]`,
 			wantOut: Gist{ID: "5678", Files: map[string]*GistFile{"gistfile0.txt": {Filename: "gistfile0.txt"}}, UpdatedAt: sixHoursAgo, Public: true},
 		},
 		{
 			name:     "no files",
-			response: `{ "data": { "viewer": { "gists": { "nodes": [] } } } }`,
+			response: `[]`,
 			wantOut:  Gist{},
 		},
 		{
@@ -173,22 +174,22 @@ func TestPromptGists(t *testing.T) {
 						return prompter.IndexFor(opts, "  about 6 hours ago")
 					})
 			},
-			response: `{ "data": { "viewer": { "gists": { "nodes": [
-							{
-								"name": "1234",
-								"files": [],
-								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
-							},
-							{
-								"name": "5678",
-								"files": [{ "name": "gistfile0.txt" }],
-								"description": "",
-								"updatedAt": "%[1]v",
-								"isPublic": true
-							}
-						] } } } }`,
+			response: `[
+				{
+					"id": "1234",
+					"files": {},
+					"description": "",
+					"updated_at": "%[1]v",
+					"public": true
+				},
+				{
+					"id": "5678",
+					"files": { "gistfile0.txt": { "filename": "gistfile0.txt" } },
+					"description": "",
+					"updated_at": "%[1]v",
+					"public": true
+				}
+			]`,
 			wantOut: Gist{ID: "1234", Files: map[string]*GistFile{}, UpdatedAt: sixHoursAgo, Public: true},
 		},
 	}
@@ -197,13 +198,13 @@ func TestPromptGists(t *testing.T) {
 
 	for _, tt := range tests {
 		reg := &httpmock.Registry{}
-		const query = `query GistList\b`
+		resp := tt.response
+		if strings.Contains(resp, "%") {
+			resp = fmt.Sprintf(resp, sixHoursAgoFormatted)
+		}
 		reg.Register(
-			httpmock.GraphQL(query),
-			httpmock.StringResponse(fmt.Sprintf(
-				tt.response,
-				sixHoursAgoFormatted,
-			)),
+			httpmock.REST("GET", "gists"),
+			httpmock.StringResponse(resp),
 		)
 		client := &http.Client{Transport: reg}
 

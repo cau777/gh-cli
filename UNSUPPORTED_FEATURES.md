@@ -38,6 +38,7 @@ when running in REST-only mode.
 - **`gh repo create --template --internal`**: GitHub's REST `POST /repos/{owner}/{repo}/generate` endpoint only accepts `private: bool` and cannot set `internal` visibility on template-generated repositories. Passing `--internal` with `--template` returns `not all features are supported`.
 - **`gh repo read-dir` (`GET /repos/{owner}/{repo}/contents/{path}`)**: The REST Contents API caps directories at 1000 entries, omits executable permission bits (`100644` vs `100755`), omits directory `gitSHA`/`id` values, and omits submodule `branch` metadata.
 - **`gh repo list`**: REST owner repository listing endpoints do not return a `totalCount` field; header totals reflect fetched repositories.
+- **`gh release list --order asc`**: The REST `/repos/{owner}/{repo}/releases` endpoint returns releases in descending order without a sort-order parameter, so `--order asc` fetches all releases and sorts client-side by `created_at`.
 
 ## Projects & Discussions
 
@@ -49,6 +50,11 @@ when running in REST-only mode.
   introspection (`__type`) was removed. Modern GitHub.com REST API
   (`2022-11-28`) capabilities are assumed; older GHES-specific GraphQL schema
   probes are no longer performed.
+- **`gh label list` (`--json createdAt,updatedAt`, `--sort created`)**: GitHub's REST `/repos/{owner}/{repo}/labels` endpoint does not expose label `createdAt` or `updatedAt` timestamps. Requesting `createdAt` or `updatedAt` via `--json` returns `not all features are supported`; filtering (`--search`) and sorting (`--sort name` / `--order`) are performed client-side.
+- **`gh org list`**: The REST `GET /user/orgs` endpoint does not return a `totalCount` field; header totals reflect fetched organizations.
+- **`gh ruleset list`**: REST ruleset summary listings omit individual rule definitions when returned by `/rulesets`, so summary `RULES` counts are `0` when omitted, and `totalCount` reflects fetched rulesets.
+- **`gh status`**: Assignment and review-request searches use REST `/search/issues`, which does not emit partial per-item GraphQL `FORBIDDEN` SAML warnings in 200 responses (HTTP 403 search responses still surface auth warnings).
+- **`gh gist list --include-content`**: REST `GET /gists` summaries omit file contents; when `includeContent` is requested and file contents are absent in the list response, `gh` fetches individual gists via `GET /gists/{id}`.
 
 ## Shared Behavioral Caveats
 

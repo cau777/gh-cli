@@ -1121,8 +1121,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.3"),
+					httpmock.StringResponse(`{"ref":"refs/tags/v1.2.3"}`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/releases"),
@@ -1159,8 +1159,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.3"),
+					httpmock.StringResponse(`{"ref":"refs/tags/v1.2.3"}`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/releases"),
@@ -1205,8 +1205,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/Does%20not%20matter"),
+					httpmock.StringResponse(`{"ref":"refs/tags/Does%20not%20matter"}`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/releases"),
@@ -1231,8 +1231,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/Does%20not%20matter"),
+					httpmock.StringResponse(`{"ref":"refs/tags/Does%20not%20matter"}`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/releases"),
@@ -1252,8 +1252,8 @@ func Test_createRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`),
+					httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/Does%20not%20matter"),
+					httpmock.StringResponse(`{"ref":"refs/tags/Does%20not%20matter"}`),
 				)
 				reg.Register(
 					httpmock.REST("POST", "repos/OWNER/REPO/releases"),
@@ -1587,8 +1587,8 @@ func Test_createRun_interactive(t *testing.T) {
 				rs.Register(`git describe --tags --abbrev=0 v1\.2\.3\^`, 1, "")
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.3"),
+					httpmock.StringResponse(`{"ref":"refs/tags/v1.2.3"}`))
 				reg.Register(httpmock.REST("POST", "repos/OWNER/REPO/releases/generate-notes"),
 					httpmock.StatusStringResponse(404, `{}`))
 				reg.Register(httpmock.REST("POST", "repos/OWNER/REPO/releases"),
@@ -1616,8 +1616,8 @@ func Test_createRun_interactive(t *testing.T) {
 				rs.Register(signatureCmd, 0, "")
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": ""}}}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.3"),
+					httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 			},
 			wantErr: "tag v1.2.3 exists locally but has not been pushed to OWNER/REPO, please push it before continuing or specify the `--target` flag to create a new tag",
 		},
@@ -1799,8 +1799,8 @@ func Test_createRun_interactive(t *testing.T) {
 				rs.Register(signatureCmd, 0, "")
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": "tag id"}}}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.3"),
+					httpmock.StringResponse(`{"ref":"refs/tags/v1.2.3"}`))
 				reg.Register(httpmock.REST("POST", "repos/OWNER/REPO/releases/generate-notes"),
 					httpmock.StatusStringResponse(200, `{
 						"name": "generated name",
@@ -1827,8 +1827,8 @@ func Test_createRun_interactive(t *testing.T) {
 				VerifyTag: true,
 			},
 			httpStubs: func(reg *httpmock.Registry) {
-				reg.Register(httpmock.GraphQL("RepositoryFindRef"),
-					httpmock.StringResponse(`{"data":{"repository":{"ref": {"id": ""}}}}`))
+				reg.Register(httpmock.REST("GET", "repos/OWNER/REPO/git/ref/tags/v1.2.3"),
+					httpmock.StatusStringResponse(404, `{"message":"Not Found"}`))
 			},
 			wantErr: "tag v1.2.3 doesn't exist in the repo OWNER/REPO, aborting due to --verify-tag flag",
 		},

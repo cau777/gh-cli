@@ -266,18 +266,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(`{"data": {
-		"repository": {
-			"pullRequests": {
-				"nodes": [
-					{"number": 2898,
-						"headRepository": {
-						"owner": {
-						"login": "OWNER"
-						},
-												"name": "REPO"}}
-				]}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[{"number": 2898, "head": {"ref": "trunk", "repo": {"owner": {"login": "OWNER"}, "name": "REPO"}}}]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -310,18 +300,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(`{"data": {
-		"repository": {
-			"pullRequests": {
-				"nodes": [
-					{"number": 2898,
-						"headRepository": {
-						"owner": {
-						"login": "OWNER"
-						},
-												"name": "REPO"}}
-				]}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[{"number": 2898, "head": {"ref": "trunk", "repo": {"owner": {"login": "OWNER"}, "name": "REPO"}}}]`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/attempts/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -352,8 +332,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/1234/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -387,8 +367,8 @@ func TestViewRun(t *testing.T) {
 						},
 					}))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{}))
@@ -433,8 +413,8 @@ func TestViewRun(t *testing.T) {
 						},
 					}))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/attempts/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{}))
@@ -473,8 +453,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -506,8 +486,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/attempts/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -540,8 +520,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/1234/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -578,8 +558,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/3/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/3/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -2602,8 +2582,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/1234/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -2636,8 +2616,8 @@ func TestViewRun(t *testing.T) {
 					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs/1234/artifacts"),
 					httpmock.StringResponse(`{}`))
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(``))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[]`))
 				reg.Register(
 					httpmock.REST("GET", "runs/1234/jobs"),
 					httpmock.JSONResponse(shared.JobsPayload{
@@ -3027,13 +3007,13 @@ func TestViewRun_eventListenHint(t *testing.T) {
 				httpmock.REST("GET", "repos/OWNER/REPO/actions/workflows/123"),
 				httpmock.JSONResponse(shared.TestWorkflow))
 			if tt.exporter == nil || tt.invokingAgent != "" {
-				pullRequests := `{"number": 2898, "headRepository": {"owner": {"login": "OWNER"}, "name": "REPO"}}`
+				pullRequests := `{"number": 2898, "head": {"ref": "trunk", "repo": {"owner": {"login": "OWNER"}, "name": "REPO"}}}`
 				if tt.noPullRequest {
 					pullRequests = ""
 				}
 				reg.Register(
-					httpmock.GraphQL(`query PullRequestForRun`),
-					httpmock.StringResponse(`{"data": {"repository": {"pullRequests": {"nodes": [`+pullRequests+`]}}}}`))
+					httpmock.REST("GET", "repos/OWNER/REPO/pulls"),
+					httpmock.StringResponse(`[`+pullRequests+`]`))
 			}
 			if tt.exporter == nil {
 				reg.Register(

@@ -3,10 +3,12 @@ package shared
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 type RulesetResponse struct {
@@ -28,36 +30,38 @@ type RulesetList struct {
 }
 
 func ListRepoRulesets(httpClient *http.Client, repo ghrepo.Interface, limit int, includeParents bool) (*RulesetList, error) {
-	variables := map[string]any{
-		"owner":          repo.RepoOwner(),
-		"repo":           repo.RepoName(),
-		"includeParents": includeParents,
+	u, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName(), "rulesets")
+	if err != nil {
+		return nil, err
 	}
-
-	return listRulesets(httpClient, rulesetsQuery(false), variables, limit, repo.RepoHost())
+	return listRulesets(httpClient, u, limit, includeParents, repo.RepoHost())
 }
 
 func ListOrgRulesets(httpClient *http.Client, orgLogin string, limit int, host string, includeParents bool) (*RulesetList, error) {
-	variables := map[string]any{
-		"login":          orgLogin,
-		"includeParents": includeParents,
+	u, err := safeurl.JoinPath("orgs", orgLogin, "rulesets")
+	if err != nil {
+		return nil, err
 	}
-
-	return listRulesets(httpClient, rulesetsQuery(true), variables, limit, host)
+	return listRulesets(httpClient, u, limit, includeParents, host)
 }
 
-func listRulesets(httpClient *http.Client, query string, variables map[string]any, limit int, host string) (*RulesetList, error) {
-	pageLimit := min(limit, 100)
+func listRulesets(httpClient *http.Client, u *safeurl.MutableSafeURL, limit int, includeParents bool, host string) (*RulesetList, error) {
+	perPage := min(limit, 100)
+	if perPage < 1 {
+		perPage = 30
+	}
+	u.SetQuery("includes_parents", strconv.FormatBool(includeParents))
+	u.SetQuery("per_page", strconv.Itoa(perPage))
 
 	res := RulesetList{
 		Rulesets: []RulesetGraphQL{},
 	}
 	client := api.NewClientFromHTTP(httpClient)
 
-	for {
-		variables["limit"] = pageLimit
-		var data RulesetResponse
-		err := client.GraphQL(host, query, variables, &data)
+	nextPath := u.String()
+	for nextPath != "" {
+		var page []RulesetREST
+		next, err := client.RESTWithNext(host, http.MethodGet, nextPath, nil, &page)
 		if err != nil {
 			if strings.Contains(err.Error(), "requires one of the following scopes: ['admin:org']") {
 				return nil, errors.New("the 'admin:org' scope is required to view organization rulesets, try running 'gh auth refresh -s admin:org'")
@@ -66,61 +70,26 @@ func listRulesets(httpClient *http.Client, query string, variables map[string]an
 			return nil, err
 		}
 
-		res.TotalCount = data.Level.Rulesets.TotalCount
-		res.Rulesets = append(res.Rulesets, data.Level.Rulesets.Nodes...)
-
-		if len(res.Rulesets) >= limit {
-			break
+		for _, r := range page {
+			gqlRS := RulesetGraphQL{
+				DatabaseId:  r.Id,
+				Name:        r.Name,
+				Target:      strings.ToUpper(r.Target),
+				Enforcement: strings.ToUpper(r.Enforcement),
+			}
+			gqlRS.Source.TypeName = r.SourceType
+			gqlRS.Source.Owner = r.Source
+			gqlRS.Rules.TotalCount = len(r.Rules)
+			res.Rulesets = append(res.Rulesets, gqlRS)
+			if limit > 0 && len(res.Rulesets) >= limit {
+				res.TotalCount = len(res.Rulesets)
+				return &res, nil
+			}
 		}
 
-		if data.Level.Rulesets.PageInfo.HasNextPage {
-			variables["endCursor"] = data.Level.Rulesets.PageInfo.EndCursor
-			pageLimit = min(pageLimit, limit-len(res.Rulesets))
-		} else {
-			break
-		}
+		nextPath = next
 	}
 
+	res.TotalCount = len(res.Rulesets)
 	return &res, nil
 }
-
-func rulesetsQuery(org bool) string {
-	if org {
-		return orgGraphQLHeader + sharedGraphQLBody
-	} else {
-		return repoGraphQLHeader + sharedGraphQLBody
-	}
-}
-
-const repoGraphQLHeader = `
-query RepoRulesetList($limit: Int!, $endCursor: String, $includeParents: Boolean, $owner: String!, $repo: String!) {
-	level: repository(owner: $owner, name: $repo) {
-`
-
-const orgGraphQLHeader = `
-query OrgRulesetList($limit: Int!, $endCursor: String, $includeParents: Boolean, $login: String!) {
-	level: organization(login: $login) {
-`
-
-const sharedGraphQLBody = `
-rulesets(first: $limit, after: $endCursor, includeParents: $includeParents) {
-	totalCount
-	nodes {
-		databaseId
-		name
-		target
-		enforcement
-		source {
-			__typename
-			... on Repository { owner: nameWithOwner }
-			... on Organization { owner: login }
-		}
-		rules {
-			totalCount
-		}
-	}
-	pageInfo {
-		hasNextPage
-		endCursor
-	}
-}}}`

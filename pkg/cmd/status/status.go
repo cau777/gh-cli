@@ -22,7 +22,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/cli/cli/v2/pkg/set"
-	ghAPI "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -378,38 +377,63 @@ func (s *StatusGetter) LoadNotifications() error {
 	return err
 }
 
-const searchQuery = `
-fragment issue on Issue {
-	__typename
-	updatedAt
-	title
-	number
-	repository {
-		nameWithOwner
-	}
+type restIssueSearchResult struct {
+	Items []struct {
+		Number        int       `json:"number"`
+		Title         string    `json:"title"`
+		UpdatedAt     time.Time `json:"updated_at"`
+		RepositoryURL string    `json:"repository_url"`
+		PullRequest   *struct{} `json:"pull_request"`
+	} `json:"items"`
 }
-fragment pr on PullRequest {
-	__typename
-	updatedAt
-	title
-	number
-	repository {
-		nameWithOwner
+
+func repoNameWithOwnerFromAPIURL(apiURL string) string {
+	const marker = "/repos/"
+	if idx := strings.Index(apiURL, marker); idx >= 0 {
+		return strings.Trim(apiURL[idx+len(marker):], "/")
 	}
+	parts := strings.Split(strings.Trim(apiURL, "/"), "/")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2] + "/" + parts[len(parts)-1]
+	}
+	return apiURL
 }
-query AssignedSearch($searchAssigns: String!, $searchReviews: String!, $limit: Int = 25) {
-	assignments: search(first: $limit, type: ISSUE, query: $searchAssigns) {
-		nodes {
-			...issue
-			...pr
-		}
+
+func (s *StatusGetter) searchIssuesREST(c *api.Client, q string, forcePR bool) ([]SearchResult, error) {
+	u, err := safeurl.JoinPath("search", "issues")
+	if err != nil {
+		return nil, err
 	}
-	reviewRequested: search(first: $limit, type: ISSUE, query: $searchReviews) {
-		nodes {
-			...pr
+	u.SetQuery("q", q)
+	u.SetQuery("per_page", "25")
+
+	var resp restIssueSearchResult
+	if err := c.REST(s.hostname(), http.MethodGet, u.String(), nil, &resp); err != nil {
+		var httpErr api.HTTPError
+		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusForbidden {
+			s.addAuthError(httpErr.Message, factory.SSOURL())
+			return nil, nil
 		}
+		return nil, err
 	}
-}`
+
+	results := make([]SearchResult, 0, len(resp.Items))
+	for _, item := range resp.Items {
+		typ := "Issue"
+		if forcePR || item.PullRequest != nil {
+			typ = "PullRequest"
+		}
+		sr := SearchResult{
+			Type:      typ,
+			UpdatedAt: item.UpdatedAt,
+			Title:     item.Title,
+			Number:    item.Number,
+		}
+		sr.Repository.NameWithOwner = repoNameWithOwnerFromAPIURL(item.RepositoryURL)
+		results = append(results, sr)
+	}
+	return results, nil
+}
 
 // Populate .AssignedPRs, .AssignedIssues, .ReviewRequests
 func (s *StatusGetter) LoadSearchResults() error {
@@ -427,69 +451,36 @@ func (s *StatusGetter) LoadSearchResults() error {
 		searchAssigns.WriteString(" -repo:" + repo)
 		searchReviews.WriteString(" -repo:" + repo)
 	}
-	variables := map[string]any{
-		"searchAssigns": searchAssigns.String(),
-		"searchReviews": searchReviews.String(),
-	}
 
-	var resp struct {
-		Assignments struct {
-			Nodes []*SearchResult
-		}
-		ReviewRequested struct {
-			Nodes []*SearchResult
-		}
-	}
-	err := c.GraphQL(s.hostname(), searchQuery, variables, &resp)
-	if err != nil {
-		if gqlErrResponse, ok := errors.AsType[api.GraphQLError](err); ok {
-			gqlErrors := make([]ghAPI.GraphQLErrorItem, 0, len(gqlErrResponse.Errors))
-			// Exclude any FORBIDDEN errors and show status for what we can.
-			for _, gqlErr := range gqlErrResponse.Errors {
-				if gqlErr.Type == "FORBIDDEN" {
-					s.addAuthError(gqlErr.Message, factory.SSOURL())
-				} else {
-					gqlErrors = append(gqlErrors, gqlErr)
-				}
-			}
-			if len(gqlErrors) == 0 {
-				err = nil
-			} else {
-				err = api.GraphQLError{
-					GraphQLError: &ghAPI.GraphQLError{
-						Errors: gqlErrors,
-					},
-				}
-			}
-		}
-		if err != nil {
-			return fmt.Errorf("could not search for assignments: %w", err)
-		}
+	var assignedResults []SearchResult
+	var reviewRequested []SearchResult
+	g, _ := errgroup.WithContext(context.Background())
+	g.Go(func() error {
+		var err error
+		assignedResults, err = s.searchIssuesREST(c, searchAssigns.String(), false)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		reviewRequested, err = s.searchIssuesREST(c, searchReviews.String(), true)
+		return err
+	})
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("could not search for assignments: %w", err)
 	}
 
 	prs := []SearchResult{}
 	issues := []SearchResult{}
-	reviewRequested := []SearchResult{}
 
-	for _, node := range resp.Assignments.Nodes {
-		if node == nil {
-			continue // likely due to FORBIDDEN results
-		}
+	for _, node := range assignedResults {
 		switch node.Type {
 		case "Issue":
-			issues = append(issues, *node)
+			issues = append(issues, node)
 		case "PullRequest":
-			prs = append(prs, *node)
+			prs = append(prs, node)
 		default:
 			return fmt.Errorf("unknown Assignments type: %q", node.Type)
 		}
-	}
-
-	for _, node := range resp.ReviewRequested.Nodes {
-		if node == nil {
-			continue // likely due to FORBIDDEN results
-		}
-		reviewRequested = append(reviewRequested, *node)
 	}
 
 	sort.Sort(Results(issues))

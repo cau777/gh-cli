@@ -357,8 +357,8 @@ func Test_loginRun_nontty(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantHosts: "github.com:\n    users:\n        monalisa:\n            oauth_token: abc123\n    oauth_token: abc123\n    user: monalisa\n",
 		},
@@ -373,8 +373,8 @@ func Test_loginRun_nontty(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantHosts: "github.com:\n    users:\n        monalisa:\n            oauth_token: abc123\n    git_protocol: https\n    oauth_token: abc123\n    user: monalisa\n",
 		},
@@ -388,8 +388,8 @@ func Test_loginRun_nontty(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", "api/v3/"), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantHosts: "albert.wesker:\n    users:\n        monalisa:\n            oauth_token: abc123\n    oauth_token: abc123\n    user: monalisa\n",
 		},
@@ -425,8 +425,8 @@ func Test_loginRun_nontty(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,admin:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantHosts: "github.com:\n    users:\n        monalisa:\n            oauth_token: abc456\n    oauth_token: abc456\n    user: monalisa\n",
 		},
@@ -465,8 +465,8 @@ func Test_loginRun_nontty(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantHosts:       "github.com:\n    users:\n        monalisa:\n    user: monalisa\n",
 			wantSecureToken: "abc123",
@@ -484,8 +484,8 @@ func Test_loginRun_nontty(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"newUser"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"newUser"}`))
 			},
 			wantHosts: heredoc.Doc(`
                 github.com:
@@ -728,8 +728,8 @@ func Test_loginRun_Survey(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", "api/v3/"), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"jillv"}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"jillv"}`))
 			},
 			wantErrOut: regexp.MustCompile("Tip: you can generate a Personal Access Token here https://rebecca.chambers/settings/tokens"),
 		},
@@ -767,8 +767,8 @@ func Test_loginRun_Survey(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", "api/v3/"), httpmock.ScopesResponder("repo,read:org,read:public_key"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"jillv"}}}`))
+					httpmock.REST("GET", "api/v3/user"),
+					httpmock.StringResponse(`{"login":"jillv"}`))
 			},
 			wantErrOut: regexp.MustCompile("Tip: you can generate a Personal Access Token here https://brad.vickers/settings/tokens"),
 		},
@@ -884,8 +884,8 @@ func Test_loginRun_Survey(t *testing.T) {
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,read:org"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"monalisa"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"monalisa"}`))
 			},
 			wantHosts: heredoc.Doc(`
             github.com:
@@ -933,8 +933,8 @@ func Test_loginRun_Survey(t *testing.T) {
 			} else {
 				reg.Register(httpmock.REST("GET", ""), httpmock.ScopesResponder("repo,read:org,read:public_key"))
 				reg.Register(
-					httpmock.GraphQL(`query UserCurrent\b`),
-					httpmock.StringResponse(`{"data":{"viewer":{"login":"jillv"}}}`))
+					httpmock.REST("GET", "user"),
+					httpmock.StringResponse(`{"login":"jillv"}`))
 			}
 
 			pm := &prompter.PrompterMock{}
@@ -1045,8 +1045,8 @@ func Test_loginRun_expiringHint(t *testing.T) {
 			defer reg.Verify(t)
 			reg.Register(httpmock.REST("GET", scopesPath), httpmock.ScopesResponder("repo,read:org"))
 			reg.Register(
-				httpmock.GraphQL(`query UserCurrent\b`),
-				httpmock.StringResponse(`{"data":{"viewer":{"login":"jillv"}}}`))
+				httpmock.REST("GET", scopesPath+"user"),
+				httpmock.StringResponse(`{"login":"jillv"}`))
 
 			pm := &prompter.PrompterMock{
 				SelectFunc: func(prompt, _ string, opts []string) (int, error) {

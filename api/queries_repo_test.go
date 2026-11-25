@@ -232,6 +232,7 @@ func TestIssueRepoInfo_success(t *testing.T) {
 	assert.Equal(t, &Repository{
 		ID:               "REPOID",
 		Name:             "REPO",
+		NameWithOwner:    "OWNER/REPO",
 		Owner:            RepositoryOwner{Login: "OWNER"},
 		HasIssuesEnabled: true,
 		ViewerPermission: "WRITE",
@@ -261,6 +262,7 @@ func TestIssueRepoInfo_issuesDisabled(t *testing.T) {
 	assert.Equal(t, &Repository{
 		ID:               "REPOID",
 		Name:             "REPO",
+		NameWithOwner:    "OWNER/REPO",
 		Owner:            RepositoryOwner{Login: "OWNER"},
 		ViewerPermission: "READ",
 		Visibility:       "PUBLIC",

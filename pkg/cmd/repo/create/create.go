@@ -387,6 +387,7 @@ func createFromScratch(opts *CreateOptions) error {
 			return err
 		}
 
+		input.TemplateRepository = templateRepo
 		input.TemplateRepositoryID = repo.ID
 		templateRepoMainBranch = repo.DefaultBranchRef.Name
 	}
@@ -483,6 +484,7 @@ func createFromTemplate(opts *CreateOptions) error {
 		LicenseTemplate:      opts.LicenseTemplate,
 		IncludeAllBranches:   opts.IncludeAllBranches,
 		InitReadme:           opts.AddReadme,
+		TemplateRepository:   templateRepo,
 		TemplateRepositoryID: templateRepo.ID,
 	}
 	templateRepoMainBranch := templateRepo.DefaultBranchRef.Name

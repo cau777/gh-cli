@@ -249,8 +249,8 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data": { "repository": { "viewerCanAdminister": true } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"permissions": {"admin": true}}`))
 
 				r.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -303,8 +303,8 @@ func Test_editRun(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`{"data": { "repository": { "viewerCanAdminister": false } } }`))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"permissions": {"admin": false}}`))
 			},
 			wantsErr: "you do not have sufficient permissions to edit repository security and analysis features",
 		},
@@ -376,27 +376,14 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"visibility": "public",
-								"description": "description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"isInOrganization": true,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"visibility": "public",
+						"description": "description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"owner": {"type": "Organization"},
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -426,28 +413,15 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"visibility": "public",
-								"description": "description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"stargazerCount": 10,
-								"isInOrganization": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"visibility": "public",
+						"description": "description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"stargazers_count": 10,
+						"owner": {"type": "User"},
+						"topics": ["x"]
 					}`))
 				reg.Exclude(t, httpmock.REST("PATCH", "repos/OWNER/REPO"))
 			},
@@ -474,31 +448,16 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"visibility": "public",
-								"description": "description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"stargazerCount": 10,
-								"watchers": {
-									"totalCount": 15
-								},
-								"isInOrganization": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"visibility": "public",
+						"description": "description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"stargazers_count": 10,
+						"subscribers_count": 15,
+						"owner": {"type": "User"},
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -540,28 +499,15 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"visibility": "public",
-								"description": "description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"stargazerCount": 10,
-								"isInOrganization": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"visibility": "public",
+						"description": "description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"stargazers_count": 10,
+						"owner": {"type": "User"},
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -593,26 +539,13 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"description": "old description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"isInOrganization": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"description": "old description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"owner": {"type": "User"},
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -647,26 +580,13 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"description": "old description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"isInOrganization": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"description": "old description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"owner": {"type": "User"},
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -705,30 +625,17 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"repository": {
-								"description": "old description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"isInOrganization": false,
-								"squashMergeAllowed": false,
-								"rebaseMergeAllowed": true,
-								"mergeCommitAllowed": true,
-								"deleteBranchOnMerge": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{
+						"description": "old description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"owner": {"type": "User"},
+						"allow_squash_merge": false,
+						"allow_rebase_merge": true,
+						"allow_merge_commit": true,
+						"delete_branch_on_merge": false,
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),
@@ -769,30 +676,20 @@ func Test_editRun_interactive(t *testing.T) {
 			},
 			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
+					httpmock.REST("GET", "repos/OWNER/REPO"),
 					httpmock.StringResponse(`
 					{
-						"data": {
-							"repository": {
-								"description": "old description",
-								"homePageUrl": "https://url.com",
-								"defaultBranchRef": {
-									"name": "main"
-								},
-								"isInOrganization": false,
-								"squashMergeAllowed": false,
-								"rebaseMergeAllowed": false,
-								"mergeCommitAllowed": true,
-								"deleteBranchOnMerge": false,
-								"repositoryTopics": {
-									"nodes": [{
-										"topic": {
-											"name": "x"
-										}
-									}]
-								}
-							}
-						}
+						"description": "old description",
+						"homepage": "https://url.com",
+						"default_branch": "main",
+						"owner": {
+							"type": "User"
+						},
+						"allow_squash_merge": false,
+						"allow_rebase_merge": false,
+						"allow_merge_commit": true,
+						"delete_branch_on_merge": false,
+						"topics": ["x"]
 					}`))
 				reg.Register(
 					httpmock.REST("PATCH", "repos/OWNER/REPO"),

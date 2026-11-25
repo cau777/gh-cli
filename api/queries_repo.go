@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/internal/safeurl"
-	ghAPI "github.com/cli/go-gh/v2/pkg/api"
-	"github.com/shurcooL/githubv4"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -282,36 +282,195 @@ func (r Repository) ViewerCanTriage() bool {
 	}
 }
 
+// UnsupportedRepositoryJSONFields lists repository JSON fields that require
+// GraphQL and cannot be populated from the single-repository REST endpoint.
+var UnsupportedRepositoryJSONFields = []string{
+	"assignableUsers",
+	"codeOfConduct",
+	"contactLinks",
+	"fundingLinks",
+	"isBlankIssuesEnabled",
+	"isEmpty",
+	"isSecurityPolicyEnabled",
+	"isUserConfigurationRepository",
+	"issueTemplates",
+	"issues",
+	"labels",
+	"languages",
+	"latestRelease",
+	"mentionableUsers",
+	"milestones",
+	"projects",
+	"projectsV2",
+	"pullRequestTemplates",
+	"pullRequests",
+	"securityPolicyUrl",
+	"viewerDefaultCommitEmail",
+	"viewerDefaultMergeMethod",
+	"viewerHasStarred",
+	"viewerPossibleCommitEmails",
+	"viewerSubscription",
+}
+
+// CheckUnsupportedRepositoryJSONFields returns a NotSupportedError if any
+// explicitly requested repository JSON field is unavailable in REST mode.
+func CheckUnsupportedRepositoryJSONFields(fields []string) error {
+	for _, f := range fields {
+		if slices.Contains(UnsupportedRepositoryJSONFields, f) {
+			return NotSupportedError(fmt.Sprintf("the `%s` repository JSON field is not supported with REST", f))
+		}
+	}
+	return nil
+}
+
+// FetchRepository fetches repository metadata via REST.
 func FetchRepository(client *Client, repo ghrepo.Interface, fields []string) (*Repository, error) {
-	query := fmt.Sprintf(`query RepositoryInfo($owner: String!, $name: String!) {
-		repository(owner: $owner, name: $name) {%s}
-	}`, RepositoryGraphQL(fields))
-
-	variables := map[string]any{
-		"owner": repo.RepoOwner(),
-		"name":  repo.RepoName(),
-	}
-
-	var result struct {
-		Repository *Repository
-	}
-	if err := client.GraphQL(repo.RepoHost(), query, variables, &result); err != nil {
+	res, err := fetchRESTRepo(client, repo)
+	if err != nil {
 		return nil, err
 	}
-	// The GraphQL API should have returned an error in case of a missing repository, but this isn't
-	// guaranteed to happen when an authentication token with insufficient permissions is being used.
-	if result.Repository == nil {
-		return nil, GraphQLError{
-			GraphQLError: &ghAPI.GraphQLError{
-				Errors: []ghAPI.GraphQLErrorItem{{
-					Type:    "NOT_FOUND",
-					Message: fmt.Sprintf("Could not resolve to a Repository with the name '%s/%s'.", repo.RepoOwner(), repo.RepoName()),
-				}},
-			},
+	out := res.toRepository(repo.RepoHost())
+	if out.Name == "" {
+		out.Name = repo.RepoName()
+	}
+	if out.Owner.Login == "" {
+		out.Owner.Login = repo.RepoOwner()
+	}
+	if out.NameWithOwner == "" && out.Owner.Login != "" && out.Name != "" {
+		out.NameWithOwner = out.Owner.Login + "/" + out.Name
+	}
+	return out, nil
+}
+
+// ListOwnerRepositoriesREST lists repositories owned by the given owner (or the
+// authenticated viewer when owner is empty) via REST.
+func ListOwnerRepositoriesREST(client *Client, hostname, owner string, limit int, visibility string, forkOnly, sourceOnly bool) (string, []Repository, error) {
+	perPage := 100
+	if !forkOnly && !sourceOnly && limit > 0 && limit < 100 {
+		perPage = limit
+	}
+
+	var u *safeurl.MutableSafeURL
+	var err error
+	ownerLogin := owner
+
+	if owner == "" {
+		u, err = safeurl.JoinPath("user", "repos")
+		if err != nil {
+			return "", nil, err
+		}
+		u.SetQuery("affiliation", "owner")
+		if visibility != "" {
+			u.SetQuery("visibility", strings.ToLower(visibility))
+		}
+	} else {
+		userPath, pathErr := safeurl.JoinPath("users", owner)
+		if pathErr != nil {
+			return "", nil, pathErr
+		}
+		var ownerUser restUser
+		if err := client.REST(hostname, http.MethodGet, userPath.String(), nil, &ownerUser); err != nil {
+			if isHTTPNotFound(err) {
+				return "", nil, nil
+			}
+			return "", nil, err
+		}
+		if ownerUser.Login != "" {
+			ownerLogin = ownerUser.Login
+		}
+		if strings.EqualFold(ownerUser.Type, "Organization") {
+			u, err = safeurl.JoinPath("orgs", ownerLogin, "repos")
+			if err != nil {
+				return "", nil, err
+			}
+			u.SetQuery("type", "all")
+		} else {
+			u, err = safeurl.JoinPath("users", ownerLogin, "repos")
+			if err != nil {
+				return "", nil, err
+			}
+			u.SetQuery("type", "owner")
 		}
 	}
 
-	return InitRepoHostname(result.Repository, repo.RepoHost()), nil
+	u.SetQuery("sort", "pushed")
+	u.SetQuery("direction", "desc")
+	u.SetQuery("per_page", strconv.Itoa(perPage))
+
+	var repos []Repository
+	nextPath := u.String()
+	for nextPath != "" {
+		var page []restRepo
+		next, err := client.RESTWithNext(hostname, http.MethodGet, nextPath, nil, &page)
+		if err != nil {
+			return "", nil, err
+		}
+		for i := range page {
+			r := page[i].toRepository(hostname)
+			if owner == "" && ownerLogin == "" && r.Owner.Login != "" {
+				ownerLogin = r.Owner.Login
+			}
+			if visibility != "" && !strings.EqualFold(r.Visibility, visibility) {
+				continue
+			}
+			if forkOnly && !r.IsFork {
+				continue
+			}
+			if sourceOnly && r.IsFork {
+				continue
+			}
+			repos = append(repos, *r)
+			if limit > 0 && len(repos) >= limit {
+				return ownerLogin, repos, nil
+			}
+		}
+		nextPath = next
+	}
+
+	return ownerLogin, repos, nil
+}
+
+// SearchRepositoriesREST searches repositories using the REST search endpoint.
+func SearchRepositoriesREST(client *Client, hostname, query string, limit int) (int, []Repository, error) {
+	perPage := 100
+	if limit > 0 && limit < 100 {
+		perPage = limit
+	}
+
+	basePath, err := safeurl.JoinPath("search", "repositories")
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var totalCount int
+	var repos []Repository
+	for page := 1; ; page++ {
+		q := url.Values{}
+		q.Set("q", query)
+		q.Set("per_page", strconv.Itoa(perPage))
+		q.Set("page", strconv.Itoa(page))
+		reqPath := basePath.String() + "?" + q.Encode()
+
+		var res struct {
+			TotalCount int        `json:"total_count"`
+			Items      []restRepo `json:"items"`
+		}
+		if err := client.REST(hostname, http.MethodGet, reqPath, nil, &res); err != nil {
+			return 0, nil, err
+		}
+		totalCount = res.TotalCount
+		for i := range res.Items {
+			repos = append(repos, *res.Items[i].toRepository(hostname))
+			if limit > 0 && len(repos) >= limit {
+				return totalCount, repos, nil
+			}
+		}
+		if len(res.Items) < perPage || len(res.Items) == 0 {
+			break
+		}
+	}
+
+	return totalCount, repos, nil
 }
 
 // IssueRepoInfo fetches repository metadata needed for issue operations via REST.
@@ -882,38 +1041,14 @@ func RepoMetadata(client *Client, repo ghrepo.Interface, input RepoMetadataInput
 	var g errgroup.Group
 
 	if input.Assignees || input.Reviewers {
-		// TODO ApiActorsSupported
-		if input.ApiActorsSupported {
-			g.Go(func() error {
-				actors, err := RepoAssignableActors(client, repo)
-				if err != nil {
-					return fmt.Errorf("error fetching assignable actors: %w", err)
-				}
-				result.AssignableActors = actors
-
-				// Filter actors for users to use for pull request reviewers,
-				// skip retrieving the same info through RepoAssignableUsers().
-				var users []AssignableUser
-				for _, a := range actors {
-					if _, ok := a.(AssignableUser); !ok {
-						continue
-					}
-					users = append(users, a.(AssignableUser))
-				}
-				result.AssignableUsers = users
-				return nil
-			})
-		} else {
-			// Not using Actors, fetch legacy assignable users.
-			g.Go(func() error {
-				users, err := RepoAssignableUsers(client, repo)
-				if err != nil {
-					err = fmt.Errorf("error fetching assignable users: %w", err)
-				}
-				result.AssignableUsers = users
-				return err
-			})
-		}
+		g.Go(func() error {
+			users, err := RepoAssignableUsers(client, repo)
+			if err != nil {
+				err = fmt.Errorf("error fetching assignable users: %w", err)
+			}
+			result.AssignableUsers = users
+			return err
+		})
 	}
 
 	if input.Reviewers && input.TeamReviewers {
@@ -1134,135 +1269,6 @@ func RepoAssignableUsers(client *Client, repo ghrepo.Interface) ([]AssignableUse
 		})
 	}
 	return users, nil
-}
-
-// RepoAssignableActors fetches all the assignable actors for a repository on
-// GitHub hosts that support Actor assignees.
-func RepoAssignableActors(client *Client, repo ghrepo.Interface) ([]AssignableActor, error) {
-	type responseData struct {
-		Repository struct {
-			SuggestedActors struct {
-				Nodes []struct {
-					User struct {
-						ID       string
-						Login    string
-						Name     string
-						TypeName string `graphql:"__typename"`
-					} `graphql:"... on User"`
-					Bot struct {
-						ID       string
-						Login    string
-						TypeName string `graphql:"__typename"`
-					} `graphql:"... on Bot"`
-				}
-				PageInfo struct {
-					HasNextPage bool
-					EndCursor   string
-				}
-			} `graphql:"suggestedActors(first: 100, after: $endCursor, capabilities: CAN_BE_ASSIGNED)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	variables := map[string]any{
-		"owner":     githubv4.String(repo.RepoOwner()),
-		"name":      githubv4.String(repo.RepoName()),
-		"endCursor": (*githubv4.String)(nil),
-	}
-
-	var actors []AssignableActor
-	for {
-		var query responseData
-		err := client.Query(repo.RepoHost(), "RepositoryAssignableActors", &query, variables)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, node := range query.Repository.SuggestedActors.Nodes {
-			if node.User.TypeName == "User" {
-				actor := AssignableUser{
-					id:    node.User.ID,
-					login: node.User.Login,
-					name:  node.User.Name,
-				}
-				actors = append(actors, actor)
-			} else if node.Bot.TypeName == "Bot" {
-				actor := AssignableBot{
-					id:    node.Bot.ID,
-					login: node.Bot.Login,
-				}
-				actors = append(actors, actor)
-			}
-		}
-
-		if !query.Repository.SuggestedActors.PageInfo.HasNextPage {
-			break
-		}
-		variables["endCursor"] = githubv4.String(query.Repository.SuggestedActors.PageInfo.EndCursor)
-	}
-	return actors, nil
-}
-
-// SearchRepoAssignableActors searches assignable actors for a repository with an optional
-// query string. Unlike RepoAssignableActors which fetches all actors with pagination, this
-// returns up to 10 results matching the query, suitable for search-based selection.
-func SearchRepoAssignableActors(client *Client, repo ghrepo.Interface, query string) ([]AssignableActor, int, error) {
-	type responseData struct {
-		Repository struct {
-			AssignableUsers struct {
-				TotalCount int
-			}
-			SuggestedActors struct {
-				Nodes []struct {
-					User struct {
-						ID       string
-						Login    string
-						Name     string
-						TypeName string `graphql:"__typename"`
-					} `graphql:"... on User"`
-					Bot struct {
-						ID       string
-						Login    string
-						TypeName string `graphql:"__typename"`
-					} `graphql:"... on Bot"`
-				}
-			} `graphql:"suggestedActors(first: 10, query: $query, capabilities: CAN_BE_ASSIGNED)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-
-	var q *githubv4.String
-	if query != "" {
-		v := githubv4.String(query)
-		q = &v
-	}
-
-	variables := map[string]any{
-		"owner": githubv4.String(repo.RepoOwner()),
-		"name":  githubv4.String(repo.RepoName()),
-		"query": q,
-	}
-
-	var result responseData
-	if err := client.Query(repo.RepoHost(), "SearchRepoAssignableActors", &result, variables); err != nil {
-		return nil, 0, err
-	}
-
-	var actors []AssignableActor
-	for _, node := range result.Repository.SuggestedActors.Nodes {
-		if node.User.TypeName == "User" {
-			actors = append(actors, AssignableUser{
-				id:    node.User.ID,
-				login: node.User.Login,
-				name:  node.User.Name,
-			})
-		} else if node.Bot.TypeName == "Bot" {
-			actors = append(actors, AssignableBot{
-				id:    node.Bot.ID,
-				login: node.Bot.Login,
-			})
-		}
-	}
-
-	return actors, result.Repository.AssignableUsers.TotalCount, nil
 }
 
 type RepoLabel struct {

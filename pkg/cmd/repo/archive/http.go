@@ -1,28 +1,22 @@
 package archive
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 
 	"github.com/cli/cli/v2/api"
-	"github.com/shurcooL/githubv4"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 func archiveRepo(client *http.Client, repo *api.Repository) error {
-	var mutation struct {
-		ArchiveRepository struct {
-			Repository struct {
-				ID string
-			}
-		} `graphql:"archiveRepository(input: $input)"`
+	path, err := safeurl.JoinPath("repos", repo.RepoOwner(), repo.RepoName())
+	if err != nil {
+		return err
 	}
-
-	variables := map[string]any{
-		"input": githubv4.ArchiveRepositoryInput{
-			RepositoryID: repo.ID,
-		},
+	payload, err := json.Marshal(map[string]bool{"archived": true})
+	if err != nil {
+		return err
 	}
-
-	gql := api.NewClientFromHTTP(client)
-	err := gql.Mutate(repo.RepoHost(), "ArchiveRepository", &mutation, variables)
-	return err
+	return api.NewClientFromHTTP(client).REST(repo.RepoHost(), http.MethodPatch, path.String(), bytes.NewReader(payload), nil)
 }

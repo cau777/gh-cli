@@ -1,9 +1,8 @@
 package list
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 
@@ -16,21 +15,11 @@ func Test_listReposWithLanguage(t *testing.T) {
 	reg := httpmock.Registry{}
 	defer reg.Verify(t)
 
-	var searchData struct {
-		Query     string
-		Variables map[string]any
-	}
+	var gotQuery url.Values
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryListSearch\b`),
+		httpmock.REST("GET", "search/repositories"),
 		func(req *http.Request) (*http.Response, error) {
-			jsonData, err := io.ReadAll(req.Body)
-			if err != nil {
-				return nil, err
-			}
-			err = json.Unmarshal(jsonData, &searchData)
-			if err != nil {
-				return nil, err
-			}
+			gotQuery = req.URL.Query()
 
 			respBody, err := os.Open("./fixtures/repoSearch.json")
 			if err != nil {
@@ -56,8 +45,8 @@ func Test_listReposWithLanguage(t *testing.T) {
 	assert.Equal(t, "octocat", res.Owner)
 	assert.Equal(t, "octocat/hello-world", res.Repositories[0].NameWithOwner)
 
-	assert.Equal(t, float64(10), searchData.Variables["perPage"])
-	assert.Equal(t, `sort:updated-desc fork:true language:go user:@me`, searchData.Variables["query"])
+	assert.Equal(t, "10", gotQuery.Get("per_page"))
+	assert.Equal(t, `sort:updated-desc fork:true language:go user:@me`, gotQuery.Get("q"))
 }
 
 func Test_searchQuery(t *testing.T) {

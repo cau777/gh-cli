@@ -115,6 +115,9 @@ func viewRun(opts *ViewOptions) error {
 	fields := defaultFields
 	if opts.Exporter != nil {
 		fields = opts.Exporter.Fields()
+		if err := api.CheckUnsupportedRepositoryJSONFields(fields); err != nil {
+			return err
+		}
 	}
 
 	repo, err := api.FetchRepository(apiClient, toView, fields)

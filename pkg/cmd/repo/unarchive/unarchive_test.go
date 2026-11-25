@@ -2,7 +2,6 @@ package unarchive
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -66,7 +65,6 @@ func TestNewCmdUnarchive(t *testing.T) {
 }
 
 func Test_UnarchiveRun(t *testing.T) {
-	queryResponse := `{ "data": { "repository": { "id": "THE-ID","isArchived": %s} } }`
 	tests := []struct {
 		name          string
 		opts          UnarchiveOptions
@@ -91,11 +89,13 @@ func Test_UnarchiveRun(t *testing.T) {
 			opts:  UnarchiveOptions{RepoArg: "OWNER/REPO"},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(fmt.Sprintf(queryResponse, "true")))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"archived":true}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnarchiveRepository\b`),
-					httpmock.StringResponse(`{}`))
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, false, inputs["archived"])
+					}))
 			},
 		},
 		{
@@ -113,11 +113,13 @@ func Test_UnarchiveRun(t *testing.T) {
 			isTTY: true,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(fmt.Sprintf(queryResponse, "true")))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"archived":true}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation UnarchiveRepository\b`),
-					httpmock.StringResponse(`{}`))
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, false, inputs["archived"])
+					}))
 			},
 		},
 		{
@@ -126,8 +128,8 @@ func Test_UnarchiveRun(t *testing.T) {
 			opts:       UnarchiveOptions{RepoArg: "OWNER/REPO"},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(fmt.Sprintf(queryResponse, "false")))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"archived":false}`))
 			},
 		},
 	}

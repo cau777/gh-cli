@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/pkg/httpmock"
 	"github.com/stretchr/testify/assert"
@@ -32,30 +33,17 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"createRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":             "winter-foods",
-								"description":      "roasted chestnuts",
-								"homepageUrl":      "http://example.com",
-								"visibility":       "PUBLIC",
-								"hasIssuesEnabled": true,
-								"hasWikiEnabled":   true,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "user/repos"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"name":        "winter-foods",
+							"description": "roasted chestnuts",
+							"homepage":    "http://example.com",
+							"private":     false,
+							"has_issues":  true,
+							"has_wiki":    true,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -73,30 +61,17 @@ func Test_repoCreate(t *testing.T) {
 			},
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"createRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":             "winter-foods",
-								"description":      "roasted chestnuts",
-								"homepageUrl":      "http://example.com",
-								"visibility":       "PUBLIC",
-								"hasIssuesEnabled": true,
-								"hasWikiEnabled":   true,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "api/v3/user/repos"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"name":        "winter-foods",
+							"description": "roasted chestnuts",
+							"homepage":    "http://example.com",
+							"private":     false,
+							"has_issues":  true,
+							"has_wiki":    true,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://example.com/OWNER/REPO",
@@ -116,29 +91,16 @@ func Test_repoCreate(t *testing.T) {
 					httpmock.REST("GET", "users/snacks-inc"),
 					httpmock.StringResponse(`{ "node_id": "ORGID", "type": "Organization" }`))
 				r.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"createRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":             "crisps",
-								"visibility":       "INTERNAL",
-								"ownerId":          "ORGID",
-								"hasIssuesEnabled": true,
-								"hasWikiEnabled":   true,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "orgs/snacks-inc/repos"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"name":       "crisps",
+							"private":    false,
+							"visibility": "internal",
+							"has_issues": true,
+							"has_wiki":   true,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -159,30 +121,17 @@ func Test_repoCreate(t *testing.T) {
 					httpmock.REST("GET", "orgs/snacks-inc/teams/munchies"),
 					httpmock.StringResponse(`{ "node_id": "TEAMID", "id": 1234, "organization": {"node_id": "ORGID"} }`))
 				r.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"createRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":             "crisps",
-								"visibility":       "INTERNAL",
-								"ownerId":          "ORGID",
-								"teamId":           "TEAMID",
-								"hasIssuesEnabled": true,
-								"hasWikiEnabled":   true,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "orgs/snacks-inc/repos"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"name":       "crisps",
+							"private":    false,
+							"visibility": "internal",
+							"team_id":    float64(1234),
+							"has_issues": true,
+							"has_wiki":   true,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -194,6 +143,7 @@ func Test_repoCreate(t *testing.T) {
 				Name:                 "gen-project",
 				Description:          "my generated project",
 				Visibility:           "private",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
 				TemplateRepositoryID: "TPLID",
 				HasIssuesEnabled:     true,
 				HasWikiEnabled:       true,
@@ -202,32 +152,18 @@ func Test_repoCreate(t *testing.T) {
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
 					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"USERID"}`))
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				r.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":               "gen-project",
-								"description":        "my generated project",
-								"visibility":         "PRIVATE",
-								"ownerId":            "USERID",
-								"repositoryId":       "TPLID",
-								"includeAllBranches": false,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "repos/TPLOWNER/TPLREPO/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"owner":                "OWNER",
+							"name":                 "gen-project",
+							"description":          "my generated project",
+							"private":              true,
+							"include_all_branches": false,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -239,6 +175,7 @@ func Test_repoCreate(t *testing.T) {
 				Name:                 "gen-project",
 				Description:          "my generated project",
 				Visibility:           "private",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
 				TemplateRepositoryID: "TPLID",
 				HasIssuesEnabled:     true,
 				HasWikiEnabled:       false,
@@ -247,52 +184,27 @@ func Test_repoCreate(t *testing.T) {
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
 					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"USERID"}`))
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				r.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":               "gen-project",
-								"description":        "my generated project",
-								"visibility":         "PRIVATE",
-								"ownerId":            "USERID",
-								"repositoryId":       "TPLID",
-								"includeAllBranches": false,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "repos/TPLOWNER/TPLREPO/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"owner":                "OWNER",
+							"name":                 "gen-project",
+							"description":          "my generated project",
+							"private":              true,
+							"include_all_branches": false,
+						}, payload)
+					}),
 				)
 				r.Register(
-					httpmock.GraphQL(`mutation UpdateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"updateRepository": {
-									"repository": {
-										"id": "REPOID"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"repositoryId":     "REPOID",
-								"hasIssuesEnabled": true,
-								"hasWikiEnabled":   false,
-							}, inputs)
-						}),
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"has_issues": true,
+							"has_wiki":   false,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -304,6 +216,7 @@ func Test_repoCreate(t *testing.T) {
 				Name:                 "gen-project",
 				Description:          "my generated project",
 				Visibility:           "private",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
 				TemplateRepositoryID: "TPLID",
 				HasIssuesEnabled:     false,
 				HasWikiEnabled:       true,
@@ -312,52 +225,27 @@ func Test_repoCreate(t *testing.T) {
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
 					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"USERID"}`))
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				r.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":               "gen-project",
-								"description":        "my generated project",
-								"visibility":         "PRIVATE",
-								"ownerId":            "USERID",
-								"repositoryId":       "TPLID",
-								"includeAllBranches": false,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "repos/TPLOWNER/TPLREPO/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"owner":                "OWNER",
+							"name":                 "gen-project",
+							"description":          "my generated project",
+							"private":              true,
+							"include_all_branches": false,
+						}, payload)
+					}),
 				)
 				r.Register(
-					httpmock.GraphQL(`mutation UpdateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"updateRepository": {
-									"repository": {
-										"id": "REPOID"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"repositoryId":     "REPOID",
-								"hasIssuesEnabled": false,
-								"hasWikiEnabled":   true,
-							}, inputs)
-						}),
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"has_issues": false,
+							"has_wiki":   true,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -369,6 +257,7 @@ func Test_repoCreate(t *testing.T) {
 				Name:                 "gen-project",
 				Description:          "my generated project",
 				Visibility:           "private",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
 				TemplateRepositoryID: "TPLID",
 				HasIssuesEnabled:     false,
 				HasWikiEnabled:       false,
@@ -377,52 +266,27 @@ func Test_repoCreate(t *testing.T) {
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
 					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"USERID"}`))
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				r.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":               "gen-project",
-								"description":        "my generated project",
-								"visibility":         "PRIVATE",
-								"ownerId":            "USERID",
-								"repositoryId":       "TPLID",
-								"includeAllBranches": false,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "repos/TPLOWNER/TPLREPO/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"owner":                "OWNER",
+							"name":                 "gen-project",
+							"description":          "my generated project",
+							"private":              true,
+							"include_all_branches": false,
+						}, payload)
+					}),
 				)
 				r.Register(
-					httpmock.GraphQL(`mutation UpdateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"updateRepository": {
-									"repository": {
-										"id": "REPOID"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"repositoryId":     "REPOID",
-								"hasIssuesEnabled": false,
-								"hasWikiEnabled":   false,
-							}, inputs)
-						}),
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"has_issues": false,
+							"has_wiki":   false,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -434,6 +298,7 @@ func Test_repoCreate(t *testing.T) {
 				Name:                 "gen-project",
 				Description:          "my generated project",
 				Visibility:           "private",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
 				TemplateRepositoryID: "TPLID",
 				HasIssuesEnabled:     true,
 				HasWikiEnabled:       true,
@@ -443,53 +308,28 @@ func Test_repoCreate(t *testing.T) {
 			stubs: func(t *testing.T, r *httpmock.Registry) {
 				r.Register(
 					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"USERID"}`))
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				r.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":               "gen-project",
-								"description":        "my generated project",
-								"visibility":         "PRIVATE",
-								"ownerId":            "USERID",
-								"repositoryId":       "TPLID",
-								"includeAllBranches": false,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "repos/TPLOWNER/TPLREPO/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"owner":                "OWNER",
+							"name":                 "gen-project",
+							"description":          "my generated project",
+							"private":              true,
+							"include_all_branches": false,
+						}, payload)
+					}),
 				)
 				r.Register(
-					httpmock.GraphQL(`mutation UpdateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"updateRepository": {
-									"repository": {
-										"id": "REPOID"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"repositoryId":     "REPOID",
-								"hasIssuesEnabled": true,
-								"hasWikiEnabled":   true,
-								"homepageUrl":      "https://example.com",
-							}, inputs)
-						}),
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"has_issues": true,
+							"has_wiki":   true,
+							"homepage":   "https://example.com",
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
@@ -500,8 +340,9 @@ func Test_repoCreate(t *testing.T) {
 			input: repoCreateInput{
 				Name:                 "gen-project",
 				Description:          "my generated project",
-				Visibility:           "internal",
+				Visibility:           "private",
 				OwnerLogin:           "myorg",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
 				TemplateRepositoryID: "TPLID",
 				HasIssuesEnabled:     true,
 				HasWikiEnabled:       true,
@@ -512,33 +353,41 @@ func Test_repoCreate(t *testing.T) {
 					httpmock.REST("GET", "users/myorg"),
 					httpmock.StringResponse(`{ "node_id": "ORGID", "type": "Organization" }`))
 				r.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(
-						`{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "the://URL"
-									}
-								}
-							}
-						}`,
-						func(inputs map[string]any) {
-							assert.Equal(t, map[string]any{
-								"name":               "gen-project",
-								"description":        "my generated project",
-								"visibility":         "INTERNAL",
-								"ownerId":            "ORGID",
-								"repositoryId":       "TPLID",
-								"includeAllBranches": false,
-							}, inputs)
-						}),
+					httpmock.REST("POST", "repos/TPLOWNER/TPLREPO/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"the://URL"}`, func(payload map[string]any) {
+						assert.Equal(t, map[string]any{
+							"owner":                "myorg",
+							"name":                 "gen-project",
+							"description":          "my generated project",
+							"private":              true,
+							"include_all_branches": false,
+						}, payload)
+					}),
 				)
 			},
 			wantRepo: "https://github.com/OWNER/REPO",
+		},
+		{
+			name:     "create org repo from template repo as internal is not supported",
+			hostname: "github.com",
+			input: repoCreateInput{
+				Name:                 "gen-project",
+				Description:          "my generated project",
+				Visibility:           "internal",
+				OwnerLogin:           "myorg",
+				TemplateRepository:   ghrepo.NewWithHost("TPLOWNER", "TPLREPO", "github.com"),
+				TemplateRepositoryID: "TPLID",
+				HasIssuesEnabled:     true,
+				HasWikiEnabled:       true,
+				IncludeAllBranches:   false,
+			},
+			wantErr: true,
+			errMsg:  api.ErrNotSupported.Error(),
+			stubs: func(t *testing.T, r *httpmock.Registry) {
+				r.Register(
+					httpmock.REST("GET", "users/myorg"),
+					httpmock.StringResponse(`{ "node_id": "ORGID", "type": "Organization" }`))
+			},
 		},
 		{
 			name:     "create with license and gitignore",
@@ -700,7 +549,7 @@ func Test_repoCreate(t *testing.T) {
 					httpmock.StringResponse(`{ "node_id": "1234", "type": "Not-Org" }`))
 				r.Exclude(
 					t,
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
+					httpmock.REST("POST", "user/repos"),
 				)
 			},
 		},

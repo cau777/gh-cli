@@ -195,8 +195,8 @@ func Test_RepoView_Web(t *testing.T) {
 	for _, tt := range tests {
 		reg := &httpmock.Registry{}
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryInfo\b`),
-			httpmock.StringResponse(`{"data":{"repository":{"name":"REPO","owner":{"login":"OWNER"}}}}`))
+			httpmock.REST("GET", "repos/OWNER/REPO"),
+			httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"}}`))
 
 		browser := &browser.Stub{}
 		opts := &ViewOptions{
@@ -338,12 +338,8 @@ func Test_ViewRun(t *testing.T) {
 
 		reg := &httpmock.Registry{}
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryInfo\b`),
-			httpmock.StringResponse(`
-		{ "data": {
-			"repository": {
-			"description": "social distancing"
-		} } }`))
+			httpmock.REST("GET", fmt.Sprintf("repos/%s", tt.repoName)),
+			httpmock.StringResponse(`{"description":"social distancing"}`))
 		reg.Register(
 			httpmock.REST("GET", fmt.Sprintf("repos/%s/readme", tt.repoName)),
 			httpmock.StringResponse(`
@@ -402,12 +398,8 @@ func Test_ViewRun_NonMarkdownReadme(t *testing.T) {
 	for _, tt := range tests {
 		reg := &httpmock.Registry{}
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryInfo\b`),
-			httpmock.StringResponse(`
-		{ "data": {
-				"repository": {
-				"description": "social distancing"
-		} } }`))
+			httpmock.REST("GET", "repos/OWNER/REPO"),
+			httpmock.StringResponse(`{"description":"social distancing"}`))
 		reg.Register(
 			httpmock.REST("GET", "repos/OWNER/REPO/readme"),
 			httpmock.StringResponse(`
@@ -470,12 +462,8 @@ func Test_ViewRun_NoReadme(t *testing.T) {
 	for _, tt := range tests {
 		reg := &httpmock.Registry{}
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryInfo\b`),
-			httpmock.StringResponse(`
-		{ "data": {
-				"repository": {
-				"description": "social distancing"
-		} } }`))
+			httpmock.REST("GET", "repos/OWNER/REPO"),
+			httpmock.StringResponse(`{"description":"social distancing"}`))
 		reg.Register(
 			httpmock.REST("GET", "repos/OWNER/REPO/readme"),
 			httpmock.StatusStringResponse(404, `{}`))
@@ -538,12 +526,8 @@ func Test_ViewRun_NoDescription(t *testing.T) {
 	for _, tt := range tests {
 		reg := &httpmock.Registry{}
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryInfo\b`),
-			httpmock.StringResponse(`
-		{ "data": {
-				"repository": {
-				"description": ""
-		} } }`))
+			httpmock.REST("GET", "repos/OWNER/REPO"),
+			httpmock.StringResponse(`{"description":""}`))
 		reg.Register(
 			httpmock.REST("GET", "repos/OWNER/REPO/readme"),
 			httpmock.StringResponse(`
@@ -582,12 +566,8 @@ func Test_ViewRun_WithoutUsername(t *testing.T) {
 		httpmock.REST("GET", "user"),
 		httpmock.StringResponse(`{"login":"OWNER"}`))
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`
-	{ "data": {
-		"repository": {
-		"description": "social distancing"
-	} } }`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"description":"social distancing"}`))
 	reg.Register(
 		httpmock.REST("GET", "repos/OWNER/REPO/readme"),
 		httpmock.StringResponse(`
@@ -673,12 +653,8 @@ func Test_ViewRun_HandlesSpecialCharacters(t *testing.T) {
 
 		reg := &httpmock.Registry{}
 		reg.Register(
-			httpmock.GraphQL(`query RepositoryInfo\b`),
-			httpmock.StringResponse(`
-		{ "data": {
-			"repository": {
-			"description": "Some basic special characters \" & / < > '"
-		} } }`))
+			httpmock.REST("GET", fmt.Sprintf("repos/%s", tt.repoName)),
+			httpmock.StringResponse(`{"description":"Some basic special characters \" & / < > '"}`))
 		reg.Register(
 			httpmock.REST("GET", fmt.Sprintf("repos/%s/readme", tt.repoName)),
 			httpmock.StringResponse(`
@@ -712,8 +688,8 @@ func Test_viewRun_json(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryInfo\b`),
-		httpmock.StringResponse(`{"data":{"repository":{"name":"REPO","defaultBranchRef":{"name":"main"}}}}`))
+		httpmock.REST("GET", "repos/OWNER/REPO"),
+		httpmock.StringResponse(`{"name":"REPO","default_branch":"main"}`))
 
 	opts := &ViewOptions{
 		IO: io,

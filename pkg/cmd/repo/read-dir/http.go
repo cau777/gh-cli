@@ -1,13 +1,15 @@
 package readdir
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/ghrepo"
-	"github.com/shurcooL/githubv4"
+	"github.com/cli/cli/v2/internal/safeurl"
 )
 
 // Git object modes. The high bits encode the object type (modeTypeMask); regular
@@ -115,103 +117,89 @@ func (d *repoDir) ExportData(fields []string) map[string]any {
 	}
 }
 
-// fetchTree resolves a directory listing for dirPath at ref.
-//
-// It uses the repository.object(expression) field, which returns a Tree for a
-// directory, a Blob for a file, or null when the path or ref cannot be resolved.
-// Unlike the REST Contents API, GraphQL has no 1000-entry cap and exposes the git
-// mode, which lets us tell files, dirs, symlinks, and submodules apart.
-//
-// A null object means the path or ref could not be resolved (GraphQL cannot tell
-// the two apart, so we report a single ambiguous error). A non-Tree object means
-// the path points to a file rather than a directory. The original ref (empty for
-// the default branch) is only used when building error messages.
+// fetchTree resolves a directory listing for dirPath at ref using the REST Contents API.
 func fetchTree(httpClient *http.Client, repo ghrepo.Interface, dirPath, ref string) (*repoDir, error) {
 	client := api.NewClientFromHTTP(httpClient)
 
-	expressionRef := ref
-	if expressionRef == "" {
-		expressionRef = "HEAD"
+	cleanPath := strings.Trim(dirPath, "/")
+	pathParts := []string{"repos", repo.RepoOwner(), repo.RepoName(), "contents"}
+	if cleanPath != "" {
+		pathParts = append(pathParts, strings.Split(cleanPath, "/")...)
 	}
-	expression := fmt.Sprintf("%s:%s", expressionRef, strings.TrimPrefix(dirPath, "/"))
-
-	var query struct {
-		Repository struct {
-			Object *struct {
-				TypeName string `graphql:"__typename"`
-				Tree     struct {
-					OID     string `graphql:"oid"`
-					ID      string `graphql:"id"`
-					Entries []struct {
-						Name      string
-						Path      string
-						NameRaw   string
-						PathRaw   string
-						Type      string
-						Mode      int
-						OID       string `graphql:"oid"`
-						Size      int
-						Submodule *struct {
-							GitURL              string `graphql:"gitUrl"`
-							Branch              *string
-							SubprojectCommitOid string
-						}
-					}
-				} `graphql:"... on Tree"`
-			} `graphql:"object(expression: $expression)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
+	u, err := safeurl.JoinPath(pathParts...)
+	if err != nil {
+		return nil, err
+	}
+	if ref != "" {
+		u.SetQuery("ref", ref)
 	}
 
-	variables := map[string]any{
-		"owner":      githubv4.String(repo.RepoOwner()),
-		"name":       githubv4.String(repo.RepoName()),
-		"expression": githubv4.String(expression),
-	}
-
-	if err := client.Query(repo.RepoHost(), "RepoReadDir", &query, variables); err != nil {
+	var raw json.RawMessage
+	if err := client.REST(repo.RepoHost(), http.MethodGet, u.String(), nil, &raw); err != nil {
+		var httpErr api.HTTPError
+		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+			if ref != "" {
+				return nil, fmt.Errorf("could not find %q at %q in %s (the path or ref may not exist)", dirPath, ref, ghrepo.FullName(repo))
+			}
+			return nil, fmt.Errorf("could not find %q in %s", dirPath, ghrepo.FullName(repo))
+		}
 		return nil, err
 	}
 
-	obj := query.Repository.Object
-	if obj == nil {
-		// The API returns a null object for both missing paths or refs, so we
-		// cannot tell which one is wrong and infer the message from whether a ref was given.
-		if ref != "" {
-			return nil, fmt.Errorf("could not find %q at %q in %s (the path or ref may not exist)", dirPath, ref, ghrepo.FullName(repo))
-		}
-		return nil, fmt.Errorf("could not find %q in %s", dirPath, ghrepo.FullName(repo))
+	type restContentEntry struct {
+		Name            string `json:"name"`
+		Path            string `json:"path"`
+		Type            string `json:"type"`
+		SHA             string `json:"sha"`
+		Size            int    `json:"size"`
+		SubmoduleGitURL string `json:"submodule_git_url"`
 	}
 
-	if obj.TypeName != "Tree" {
-		if obj.TypeName == "Blob" {
-			return nil, fmt.Errorf("%q is a file, not a directory; use `gh repo read-file` instead", dirPath)
+	var items []restContentEntry
+	if err := json.Unmarshal(raw, &items); err != nil {
+		var single restContentEntry
+		if objErr := json.Unmarshal(raw, &single); objErr == nil && single.Type != "" {
+			if single.Type == "file" {
+				return nil, fmt.Errorf("%q is a file, not a directory; use `gh repo read-file` instead", dirPath)
+			}
+			return nil, fmt.Errorf("%q is not a directory", dirPath)
 		}
-		return nil, fmt.Errorf("%q is not a directory", dirPath)
+		return nil, err
 	}
 
 	dir := &repoDir{
-		GitSHA:  obj.Tree.OID,
-		ID:      obj.Tree.ID,
-		Entries: make([]dirEntry, 0, len(obj.Tree.Entries)),
+		Entries: make([]dirEntry, 0, len(items)),
 	}
-
-	for _, e := range obj.Tree.Entries {
-		entry := dirEntry{
-			Name:    e.Name,
-			Path:    e.Path,
-			NameRaw: e.NameRaw,
-			PathRaw: e.PathRaw,
-			Type:    entryTypeFromMode(e.Mode),
-			GitType: e.Type,
-			Mode:    e.Mode,
-			GitSHA:  e.OID,
-			Size:    e.Size,
+	for _, item := range items {
+		gitType := "blob"
+		mode := modeFile | 0o644
+		switch item.Type {
+		case "dir":
+			gitType = "tree"
+			mode = modeDir
+		case "symlink":
+			gitType = "blob"
+			mode = modeSymlink
+		case "submodule":
+			gitType = "commit"
+			mode = modeSubmodule
 		}
-		if e.Submodule != nil {
+
+		entry := dirEntry{
+			Name:    item.Name,
+			Path:    item.Path,
+			NameRaw: item.Name,
+			PathRaw: item.Path,
+			Type:    item.Type,
+			GitType: gitType,
+			Mode:    mode,
+			GitSHA:  item.SHA,
+			Size:    item.Size,
+		}
+		if item.Type == "submodule" && item.SubmoduleGitURL != "" {
 			entry.Submodule = &submodule{
-				GitURL:              e.Submodule.GitURL,
-				Branch:              e.Submodule.Branch,
-				SubprojectCommitOid: e.Submodule.SubprojectCommitOid,
+				GitURL:              item.SubmoduleGitURL,
+				SubprojectCommitOid: item.SHA,
 			}
 		}
 		dir.Entries = append(dir.Entries, entry)

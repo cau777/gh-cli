@@ -197,11 +197,16 @@ func (r *restRepo) toRepository(hostname string) *Repository {
 		}
 	}
 
+	nameWithOwner := r.FullName
+	if nameWithOwner == "" && owner.Login != "" && r.Name != "" {
+		nameWithOwner = owner.Login + "/" + r.Name
+	}
+
 	repo := &Repository{
 		ID:                    r.NodeID,
 		DatabaseID:            r.ID,
 		Name:                  r.Name,
-		NameWithOwner:         r.FullName,
+		NameWithOwner:         nameWithOwner,
 		Owner:                 owner,
 		Parent:                r.Parent.toRepository(hostname),
 		TemplateRepository:    r.TemplateRepository.toRepository(hostname),

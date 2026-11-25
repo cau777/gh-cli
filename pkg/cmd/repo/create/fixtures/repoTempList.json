@@ -1,25 +1,12 @@
-{
-  "data": {
-    "repositoryOwner": {
-      "login": "OWNER",
-      "repositories": {
-        "nodes": [
-          {
-            "id": "REPOID",
-            "name": "REPO",
-            "isTemplate": true,
-            "pushedAt": "2021-02-19T06:34:58Z",
-            "defaultBranchRef": {
-              "name": "main"
-            }
-          }
-        ]
-      },
-      "totalCount": 0,
-      "pageInfo": {
-        "hasNextPage": false,
-        "endCursor": ""
-      }
-    }
+[
+  {
+    "node_id": "REPOID",
+    "name": "REPO",
+    "owner": {
+      "login": "OWNER"
+    },
+    "is_template": true,
+    "pushed_at": "2021-02-19T06:34:58Z",
+    "default_branch": "main"
   }
-}
+]

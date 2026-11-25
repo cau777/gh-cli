@@ -34,7 +34,10 @@ when running in REST-only mode.
 
 ## Repositories & Releases
 
-*Tracked as Repository and Release commands are migrated.*
+- **`gh repo list` / `gh repo view` `--json` fields**: Passing any of `assignableUsers`, `codeOfConduct`, `contactLinks`, `fundingLinks`, `isBlankIssuesEnabled`, `isEmpty`, `isSecurityPolicyEnabled`, `isUserConfigurationRepository`, `issueTemplates`, `issues`, `labels`, `languages`, `latestRelease`, `mentionableUsers`, `milestones`, `projects`, `projectsV2`, `pullRequestTemplates`, `pullRequests`, `securityPolicyUrl`, `viewerDefaultCommitEmail`, `viewerDefaultMergeMethod`, `viewerHasStarred`, `viewerPossibleCommitEmails`, or `viewerSubscription` with `--json` returns `not all features are supported`.
+- **`gh repo create --template --internal`**: GitHub's REST `POST /repos/{owner}/{repo}/generate` endpoint only accepts `private: bool` and cannot set `internal` visibility on template-generated repositories. Passing `--internal` with `--template` returns `not all features are supported`.
+- **`gh repo read-dir` (`GET /repos/{owner}/{repo}/contents/{path}`)**: The REST Contents API caps directories at 1000 entries, omits executable permission bits (`100644` vs `100755`), omits directory `gitSHA`/`id` values, and omits submodule `branch` metadata.
+- **`gh repo list`**: REST owner repository listing endpoints do not return a `totalCount` field; header totals reflect fetched repositories.
 
 ## Projects & Discussions
 

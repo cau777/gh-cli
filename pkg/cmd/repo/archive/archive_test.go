@@ -2,7 +2,6 @@ package archive
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -66,7 +65,6 @@ func TestNewCmdArchive(t *testing.T) {
 }
 
 func Test_ArchiveRun(t *testing.T) {
-	queryResponse := `{ "data": { "repository": { "id": "THE-ID","isArchived": %s} } }`
 	tests := []struct {
 		name          string
 		opts          ArchiveOptions
@@ -88,11 +86,13 @@ func Test_ArchiveRun(t *testing.T) {
 			opts:  ArchiveOptions{RepoArg: "OWNER/REPO"},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(fmt.Sprintf(queryResponse, "false")))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"archived":false}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation ArchiveRepository\b`),
-					httpmock.StringResponse(`{}`))
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, true, inputs["archived"])
+					}))
 			},
 		},
 		{
@@ -107,11 +107,13 @@ func Test_ArchiveRun(t *testing.T) {
 			isTTY: true,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(fmt.Sprintf(queryResponse, "false")))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"archived":false}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation ArchiveRepository\b`),
-					httpmock.StringResponse(`{}`))
+					httpmock.REST("PATCH", "repos/OWNER/REPO"),
+					httpmock.RESTPayload(200, `{}`, func(inputs map[string]any) {
+						assert.Equal(t, true, inputs["archived"])
+					}))
 			},
 		},
 		{
@@ -120,8 +122,8 @@ func Test_ArchiveRun(t *testing.T) {
 			opts:       ArchiveOptions{RepoArg: "OWNER/REPO"},
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryInfo\b`),
-					httpmock.StringResponse(fmt.Sprintf(queryResponse, "true")))
+					httpmock.REST("GET", "repos/OWNER/REPO"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"archived":true}`))
 			},
 		},
 	}

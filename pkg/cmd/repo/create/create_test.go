@@ -369,20 +369,8 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "users/org1"),
 					httpmock.StringResponse(`{"login":"org1","type":"Organization"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"org1"},
-									"url": "https://github.com/org1/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "orgs/org1/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"org1"},"html_url":"https://github.com/org1/REPO"}`))
 			},
 		},
 		{
@@ -481,20 +469,8 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user/orgs"),
 					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git -C . rev-parse --git-dir`, 0, ".git")
@@ -550,20 +526,8 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user/orgs"),
 					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git -C . rev-parse --git-dir`, 0, ".")
@@ -621,20 +585,8 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user/orgs"),
 					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git -C . rev-parse --git-dir`, 0, ".git")
@@ -698,29 +650,17 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user/orgs"),
 					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryList\b`),
+					httpmock.REST("GET", "users/OWNER"),
+					httpmock.StringResponse(`{"login":"OWNER","type":"User"}`))
+				reg.Register(
+					httpmock.REST("GET", "users/OWNER/repos"),
 					httpmock.FileResponse("./fixtures/repoTempList.json"))
 				reg.Register(
 					httpmock.REST("GET", "users/OWNER"),
 					httpmock.StringResponse(`{"login":"OWNER","type":"User"}`))
 				reg.Register(
-					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"OWNER"}`))
-				reg.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.StringResponse(`
-						{
-							"data": {
-								"cloneTemplateRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "https://github.com/OWNER/REPO"
-									}
-								}
-							}
-						}`))
+					httpmock.REST("POST", "repos/OWNER/REPO/generate"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git clone --branch main https://github.com/OWNER/REPO`, 0, "")
@@ -773,8 +713,11 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "user/orgs"),
 					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`query RepositoryList\b`),
-					httpmock.StringResponse(`{"data":{"repositoryOwner":{"login":"OWNER","repositories":{"nodes":[]},"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""}}}}`))
+					httpmock.REST("GET", "users/OWNER"),
+					httpmock.StringResponse(`{"login":"OWNER","type":"User"}`))
+				reg.Register(
+					httpmock.REST("GET", "users/OWNER/repos"),
+					httpmock.StringResponse(`[]`))
 			},
 			execStubs:  func(cs *run.CommandStubber) {},
 			wantStdout: "",
@@ -791,20 +734,8 @@ func Test_createRun(t *testing.T) {
 			tty: false,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			wantStdout: "https://github.com/OWNER/REPO\n",
 		},
@@ -819,20 +750,8 @@ func Test_createRun(t *testing.T) {
 			tty: false,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git -C . rev-parse --git-dir`, 0, ".git")
@@ -853,20 +772,8 @@ func Test_createRun(t *testing.T) {
 			tty: false,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-						{
-							"data": {
-								"createRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "https://github.com/OWNER/REPO"
-									}
-								}
-							}
-						}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git -C . rev-parse --git-dir`, 0, ".")
@@ -917,20 +824,8 @@ func Test_createRun(t *testing.T) {
 			tty: false,
 			httpStubs: func(reg *httpmock.Registry) {
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-					{
-						"data": {
-							"createRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`))
+					httpmock.REST("POST", "user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`))
 			},
 			execStubs: func(cs *run.CommandStubber) {
 				cs.Register(`git init REPO`, 0, "")
@@ -985,27 +880,15 @@ func Test_createRun(t *testing.T) {
 					httpmock.StringResponse(`{"login":"OWNER"}`))
 				reg.Register(
 					httpmock.REST("GET", "repos/OWNER/mytemplate"),
-					httpmock.StringResponse(`{"node_id":"REPOID","default_branch":"main"}`),
+					httpmock.StringResponse(`{"node_id":"REPOID","name":"mytemplate","owner":{"login":"OWNER"},"default_branch":"main"}`),
 				)
 				reg.Register(
 					httpmock.REST("GET", "user"),
-					httpmock.StringResponse(`{"node_id":"OWNERID"}`))
+					httpmock.StringResponse(`{"login":"OWNER"}`))
 				reg.Register(
-					httpmock.GraphQL(`mutation CloneTemplateRepository\b`),
-					httpmock.GraphQLMutation(`
-					{
-						"data": {
-							"cloneTemplateRepository": {
-								"repository": {
-									"id": "REPOID",
-									"name": "REPO",
-									"owner": {"login":"OWNER"},
-									"url": "https://github.com/OWNER/REPO"
-								}
-							}
-						}
-					}`, func(m map[string]any) {
-						assert.Equal(t, "REPOID", m["repositoryId"])
+					httpmock.REST("POST", "repos/OWNER/mytemplate/generate"),
+					httpmock.RESTPayload(201, `{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://github.com/OWNER/REPO"}`, func(m map[string]any) {
+						assert.Equal(t, "REPO", m["name"])
 					}))
 			},
 			execStubs: func(cs *run.CommandStubber) {
@@ -1082,20 +965,8 @@ func Test_createRun(t *testing.T) {
 					httpmock.REST("GET", "api/v3/user/orgs"),
 					httpmock.StringResponse(`[]`))
 				reg.Register(
-					httpmock.GraphQL(`mutation RepositoryCreate\b`),
-					httpmock.StringResponse(`
-						{
-							"data": {
-								"createRepository": {
-									"repository": {
-										"id": "REPOID",
-										"name": "REPO",
-										"owner": {"login":"OWNER"},
-										"url": "https://example.com/OWNER/REPO"
-									}
-								}
-							}
-						}`),
+					httpmock.REST("POST", "api/v3/user/repos"),
+					httpmock.StringResponse(`{"name":"REPO","owner":{"login":"OWNER"},"html_url":"https://example.com/OWNER/REPO"}`),
 				)
 			},
 			wantStdout: "✓ Created repository OWNER/REPO on example.com\n  https://example.com/OWNER/REPO\n",

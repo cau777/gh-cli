@@ -1,43 +1,35 @@
-{
-  "data": {
-    "repositoryOwner": {
-      "login": "octocat",
-      "repositories": {
-        "totalCount": 3,
-        "nodes": [
-          {
-            "nameWithOwner": "octocat/hello-world",
-            "description": "My first repository",
-            "isFork": false,
-            "isPrivate": false,
-            "isArchived": false,
-            "pushedAt": "2021-02-19T06:34:58Z",
-            "visibility": "PUBLIC"
-          },
-          {
-            "nameWithOwner": "octocat/cli",
-            "description": "GitHub CLI",
-            "isFork": true,
-            "isPrivate": false,
-            "isArchived": false,
-            "pushedAt": "2021-02-19T06:06:06Z",
-            "visibility": "PUBLIC"
-          },
-          {
-            "nameWithOwner": "octocat/testing",
-            "description": null,
-            "isFork": false,
-            "isPrivate": true,
-            "isArchived": false,
-            "pushedAt": "2021-02-11T22:32:05Z",
-            "visibility": "PRIVATE"
-          }
-        ],
-        "pageInfo": {
-          "hasNextPage": false,
-          "endCursor": ""
-        }
-      }
-    }
+[
+  {
+    "name": "hello-world",
+    "full_name": "octocat/hello-world",
+    "owner": { "login": "octocat" },
+    "description": "My first repository",
+    "fork": false,
+    "private": false,
+    "archived": false,
+    "pushed_at": "2021-02-19T06:34:58Z",
+    "visibility": "public"
+  },
+  {
+    "name": "cli",
+    "full_name": "octocat/cli",
+    "owner": { "login": "octocat" },
+    "description": "GitHub CLI",
+    "fork": true,
+    "private": false,
+    "archived": false,
+    "pushed_at": "2021-02-19T06:06:06Z",
+    "visibility": "public"
+  },
+  {
+    "name": "testing",
+    "full_name": "octocat/testing",
+    "owner": { "login": "octocat" },
+    "description": null,
+    "fork": false,
+    "private": true,
+    "archived": false,
+    "pushed_at": "2021-02-11T22:32:05Z",
+    "visibility": "private"
   }
-}
+]

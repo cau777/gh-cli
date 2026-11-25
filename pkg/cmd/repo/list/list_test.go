@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -390,7 +389,7 @@ func TestRepoList_nontty(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query RepositoryList\b`),
+		httpmock.REST("GET", "user/repos"),
 		httpmock.FileResponse("./fixtures/repoList.json"),
 	)
 
@@ -431,7 +430,7 @@ func TestRepoList_tty(t *testing.T) {
 	defer httpReg.Verify(t)
 
 	httpReg.Register(
-		httpmock.GraphQL(`query RepositoryList\b`),
+		httpmock.REST("GET", "user/repos"),
 		httpmock.FileResponse("./fixtures/repoList.json"),
 	)
 
@@ -467,18 +466,20 @@ func TestRepoList_tty(t *testing.T) {
 }
 
 func TestRepoList_filtering(t *testing.T) {
-	http := &httpmock.Registry{}
-	defer http.Verify(t)
+	reg := &httpmock.Registry{}
+	defer reg.Verify(t)
 
-	http.Register(
-		httpmock.GraphQL(`query RepositoryList\b`),
-		httpmock.GraphQLQuery(`{}`, func(_ string, params map[string]any) {
-			assert.Equal(t, "PRIVATE", params["privacy"])
-			assert.Equal(t, float64(2), params["perPage"])
-		}),
+	reg.Register(
+		httpmock.REST("GET", "user/repos"),
+		func(req *http.Request) (*http.Response, error) {
+			q := req.URL.Query()
+			assert.Equal(t, "private", q.Get("visibility"))
+			assert.Equal(t, "2", q.Get("per_page"))
+			return httpmock.StringResponse(`[]`)(req)
+		},
 	)
 
-	output, err := runCommand(http, true, `--visibility=private --limit 2 `)
+	output, err := runCommand(reg, true, `--visibility=private --limit 2 `)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,12 +498,8 @@ func TestRepoList_noVisibilityField(t *testing.T) {
 	defer reg.Verify(t)
 
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryList\b`),
-		httpmock.GraphQLQuery(`{"data":{"repositoryOwner":{"login":"octocat","repositories":{"totalCount":0}}}}`,
-			func(query string, params map[string]any) {
-				assert.False(t, strings.Contains(query, "visibility"))
-			},
-		),
+		httpmock.REST("GET", "user/repos"),
+		httpmock.StringResponse(`[]`),
 	)
 
 	opts := ListOptions{
@@ -538,8 +535,8 @@ func TestRepoList_invalidOwner(t *testing.T) {
 	defer reg.Verify(t)
 
 	reg.Register(
-		httpmock.GraphQL(`query RepositoryList\b`),
-		httpmock.StringResponse(`{ "data": { "repositoryOwner": null } }`),
+		httpmock.REST("GET", "users/nonexist"),
+		httpmock.StatusStringResponse(404, `{"message":"Not Found"}`),
 	)
 
 	opts := ListOptions{

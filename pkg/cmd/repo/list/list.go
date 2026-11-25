@@ -156,6 +156,9 @@ func listRun(opts *ListOptions) error {
 	}
 	if opts.Exporter != nil {
 		filter.Fields = opts.Exporter.Fields()
+		if err := api.CheckUnsupportedRepositoryJSONFields(filter.Fields); err != nil {
+			return err
+		}
 	}
 
 	listResult, err := listRepos(httpClient, host, opts.Limit, opts.Owner, filter)

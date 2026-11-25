@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -111,10 +110,10 @@ func runCreateItem(config createItemConfig) error {
 
 func createDraftIssueArgs(config createItemConfig) (*createProjectDraftItemMutation, map[string]any) {
 	return &createProjectDraftItemMutation{}, map[string]any{
-		"input": githubv4.AddProjectV2DraftIssueInput{
-			Body:      new(githubv4.String(config.opts.body)),
-			ProjectID: githubv4.ID(config.opts.projectID),
-			Title:     githubv4.String(config.opts.title),
+		"input": map[string]any{
+			"body":      config.opts.body,
+			"projectId": config.opts.projectID,
+			"title":     config.opts.title,
 		},
 	}
 }

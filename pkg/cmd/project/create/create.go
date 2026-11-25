@@ -8,7 +8,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -93,14 +92,14 @@ func runCreate(config createConfig) error {
 
 func createArgs(config createConfig) (*createProjectMutation, map[string]any) {
 	return &createProjectMutation{}, map[string]any{
-		"input": githubv4.CreateProjectV2Input{
-			OwnerID: githubv4.ID(config.opts.ownerID),
-			Title:   githubv4.String(config.opts.title),
+		"input": map[string]any{
+			"ownerId": config.opts.ownerID,
+			"title":   config.opts.title,
 		},
-		"firstItems":  githubv4.Int(0),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(0),
-		"afterFields": (*githubv4.String)(nil),
+		"firstItems":  0,
+		"afterItems":  nil,
+		"firstFields": 0,
+		"afterFields": nil,
 	}
 }
 

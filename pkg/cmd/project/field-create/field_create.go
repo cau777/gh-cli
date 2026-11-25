@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -120,21 +119,21 @@ func runCreateField(config createFieldConfig) error {
 }
 
 func createFieldArgs(config createFieldConfig) (*createProjectV2FieldMutation, map[string]any) {
-	input := githubv4.CreateProjectV2FieldInput{
-		ProjectID: githubv4.ID(config.opts.projectID),
-		DataType:  githubv4.ProjectV2CustomFieldType(config.opts.dataType),
-		Name:      githubv4.String(config.opts.name),
+	input := map[string]any{
+		"projectId": config.opts.projectID,
+		"dataType":  config.opts.dataType,
+		"name":      config.opts.name,
 	}
 
 	if len(config.opts.singleSelectOptions) != 0 {
-		opts := make([]githubv4.ProjectV2SingleSelectFieldOptionInput, 0)
+		opts := make([]map[string]any, 0, len(config.opts.singleSelectOptions))
 		for _, opt := range config.opts.singleSelectOptions {
-			opts = append(opts, githubv4.ProjectV2SingleSelectFieldOptionInput{
-				Name:  githubv4.String(opt),
-				Color: githubv4.ProjectV2SingleSelectFieldOptionColor("GRAY"),
+			opts = append(opts, map[string]any{
+				"name":  opt,
+				"color": "GRAY",
 			})
 		}
-		input.SingleSelectOptions = &opts
+		input["singleSelectOptions"] = opts
 	}
 
 	return &createProjectV2FieldMutation{}, map[string]any{

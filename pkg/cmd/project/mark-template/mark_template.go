@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -128,25 +127,25 @@ func runMarkTemplate(config markTemplateConfig) error {
 
 func markTemplateArgs(config markTemplateConfig) (*markProjectTemplateMutation, map[string]any) {
 	return &markProjectTemplateMutation{}, map[string]any{
-		"input": githubv4.MarkProjectV2AsTemplateInput{
-			ProjectID: githubv4.ID(config.opts.projectID),
+		"input": map[string]any{
+			"projectId": config.opts.projectID,
 		},
-		"firstItems":  githubv4.Int(0),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(0),
-		"afterFields": (*githubv4.String)(nil),
+		"firstItems":  0,
+		"afterItems":  nil,
+		"firstFields": 0,
+		"afterFields": nil,
 	}
 }
 
 func unmarkTemplateArgs(config markTemplateConfig) (*unmarkProjectTemplateMutation, map[string]any) {
 	return &unmarkProjectTemplateMutation{}, map[string]any{
-		"input": githubv4.UnmarkProjectV2AsTemplateInput{
-			ProjectID: githubv4.ID(config.opts.projectID),
+		"input": map[string]any{
+			"projectId": config.opts.projectID,
 		},
-		"firstItems":  githubv4.Int(0),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(0),
-		"afterFields": (*githubv4.String)(nil),
+		"firstItems":  0,
+		"afterItems":  nil,
+		"firstFields": 0,
+		"afterFields": nil,
 	}
 }
 

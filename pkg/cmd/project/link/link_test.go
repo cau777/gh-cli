@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/internal/ghrepo"
@@ -12,7 +13,6 @@ import (
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/google/shlex"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/h2non/gock.v1"
 )
 
 func TestNewCmdLink(t *testing.T) {
@@ -183,86 +183,8 @@ func TestNewCmdLink(t *testing.T) {
 	}
 }
 
-func TestRunLink_Repo(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// get user ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserOrgOwner.*",
-			"variables": map[string]string{
-				"login": "monalisa",
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"user": map[string]any{
-					"id":    "an ID",
-					"login": "monalisa",
-				},
-			},
-			"errors": []any{
-				map[string]any{
-					"type": "NOT_FOUND",
-					"path": []string{"organization"},
-				},
-			},
-		})
-
-	// get user project ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserProject.*",
-			"variables": map[string]any{
-				"login":       "monalisa",
-				"number":      1,
-				"firstItems":  0,
-				"afterItems":  nil,
-				"firstFields": 0,
-				"afterFields": nil,
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"user": map[string]any{
-					"projectV2": map[string]string{
-						"id":    "project-ID",
-						"title": "first-project",
-					},
-				},
-			},
-		})
-
-	// link projectV2 to repository
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "mutation LinkProjectV2ToRepository.*",
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"linkProjectV2ToRepository": map[string]any{},
-			},
-		})
-
-	// get repo ID
-	gock.New("https://api.github.com").
-		Get("/repos/monalisa/my-repo").
-		Reply(200).
-		JSON(map[string]any{
-			"node_id": "repo-ID",
-		})
-
-	ios, _, stdout, _ := iostreams.Test()
+func TestRunLink_NotSupported(t *testing.T) {
+	ios, _, _, _ := iostreams.Test()
 	ios.SetStdoutTTY(true)
 	cfg := linkConfig{
 		opts: linkOpts{
@@ -281,115 +203,5 @@ func TestRunLink_Repo(t *testing.T) {
 	}
 
 	err := runLink(cfg)
-	require.NoError(t, err)
-	require.Equal(
-		t,
-		"Linked 'monalisa/my-repo' to project #1 'first-project'\n",
-		stdout.String())
-}
-
-func TestRunLink_Team(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// get user ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserOrgOwner.*",
-			"variables": map[string]string{
-				"login": "monalisa-org",
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"user": map[string]any{
-					"id":    "an ID",
-					"login": "monalisa-org",
-				},
-			},
-			"errors": []any{
-				map[string]any{
-					"type": "NOT_FOUND",
-					"path": []string{"organization"},
-				},
-			},
-		})
-
-	// get user project ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserProject.*",
-			"variables": map[string]any{
-				"login":       "monalisa-org",
-				"number":      1,
-				"firstItems":  0,
-				"afterItems":  nil,
-				"firstFields": 0,
-				"afterFields": nil,
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"user": map[string]any{
-					"projectV2": map[string]string{
-						"id":    "project-ID",
-						"title": "first-project",
-					},
-				},
-			},
-		})
-
-	// link projectV2 to team
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "mutation LinkProjectV2ToTeam.*",
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"linkProjectV2ToTeam": map[string]any{},
-			},
-		})
-
-	// get team ID
-	gock.New("https://api.github.com").
-		Get("/orgs/monalisa-org/teams/my-team").
-		Reply(200).
-		JSON(map[string]any{
-			"node_id": "team-ID",
-			"slug":    "my-team",
-		})
-
-	ios, _, stdout, _ := iostreams.Test()
-	ios.SetStdoutTTY(true)
-	cfg := linkConfig{
-		opts: linkOpts{
-			number: 1,
-			team:   "my-team",
-			owner:  "monalisa-org",
-		},
-		client: queries.NewTestClient(),
-		httpClient: func() (*http.Client, error) {
-			return http.DefaultClient, nil
-		},
-		config: func() (gh.Config, error) {
-			return config.NewMockConfig(), nil
-		},
-		io: ios,
-	}
-
-	err := runLink(cfg)
-	require.NoError(t, err)
-	require.Equal(
-		t,
-		"Linked 'monalisa-org/my-team' to project #1 'first-project'\n",
-		stdout.String())
+	require.ErrorIs(t, err, api.ErrNotSupported)
 }

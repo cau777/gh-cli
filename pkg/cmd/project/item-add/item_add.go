@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -116,9 +115,9 @@ func runAddItem(config addItemConfig) error {
 
 func addItemArgs(config addItemConfig) (*addProjectItemMutation, map[string]any) {
 	return &addProjectItemMutation{}, map[string]any{
-		"input": githubv4.AddProjectV2ItemByIdInput{
-			ProjectID: githubv4.ID(config.opts.projectID),
-			ContentID: githubv4.ID(config.opts.itemID),
+		"input": map[string]any{
+			"projectId": config.opts.projectID,
+			"contentId": config.opts.itemID,
 		},
 	}
 }

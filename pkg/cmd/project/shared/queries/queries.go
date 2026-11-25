@@ -1,10 +1,8 @@
 package queries
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,8 +10,6 @@ import (
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/prompter"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/cli/cli/v2/pkg/set"
-	"github.com/shurcooL/githubv4"
 )
 
 func NewClient(httpClient *http.Client, hostname string, ios *iostreams.IOStreams) *Client {
@@ -65,12 +61,12 @@ type hostScopedClient struct {
 	hostname string
 }
 
-func (c *hostScopedClient) Query(queryName string, query any, variables map[string]any) error {
-	return c.Client.Query(c.hostname, queryName, query, variables)
+func (c *hostScopedClient) Query(_ string, _ any, _ map[string]any) error {
+	return api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
-func (c *hostScopedClient) Mutate(queryName string, query any, variables map[string]any) error {
-	return c.Client.Mutate(c.hostname, queryName, query, variables)
+func (c *hostScopedClient) Mutate(_ string, _ any, _ map[string]any) error {
+	return api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 type graphqlClient interface {
@@ -111,7 +107,7 @@ func (c *Client) Query(operationName string, query any, variables map[string]any
 
 // PageInfo is a PageInfo GraphQL object https://docs.github.com/en/graphql/reference/objects#pageinfo.
 type PageInfo struct {
-	EndCursor   githubv4.String
+	EndCursor   string
 	HasNextPage bool
 }
 
@@ -688,66 +684,8 @@ func (p ProjectItem) ExportData(_ []string) map[string]any {
 // If limit is 0, the default limit is used. The queryStr parameter is passed as a server-side
 // filter to the items connection, using the same syntax as the GitHub Projects filter bar
 // (e.g. "assignee:octocat", "status:done").
-func (c *Client) ProjectItems(o *Owner, number int32, limit int, queryStr string) (*Project, error) {
-	project := &Project{}
-	if limit == 0 {
-		limit = LimitDefault
-	}
-
-	// set first to the min of limit and LimitMax
-	first := min(limit, LimitMax)
-
-	variables := map[string]any{
-		"firstItems":  githubv4.Int(first),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(LimitMax),
-		"afterFields": (*githubv4.String)(nil),
-		"number":      githubv4.Int(number),
-	}
-	if queryStr != "" {
-		variables["query"] = githubv4.String(queryStr)
-	}
-
-	var query pager[ProjectItem]
-	var queryName string
-	switch o.Type {
-	case UserOwner:
-		variables["login"] = githubv4.String(o.Login)
-		if queryStr == "" {
-			query = &userOwnerWithItemsNoQuery{}
-		} else {
-			query = &userOwnerWithItems{}
-		}
-		queryName = "UserProjectWithItems"
-	case OrgOwner:
-		variables["login"] = githubv4.String(o.Login)
-		if queryStr == "" {
-			query = &orgOwnerWithItemsNoQuery{}
-		} else {
-			query = &orgOwnerWithItems{}
-		}
-		queryName = "OrgProjectWithItems"
-	case ViewerOwner:
-		if queryStr == "" {
-			query = &viewerOwnerWithItemsNoQuery{}
-		} else {
-			query = &viewerOwnerWithItems{}
-		}
-		queryName = "ViewerProjectWithItems"
-	}
-	err := c.doQueryWithProgressIndicator(queryName, query, variables)
-	if err != nil {
-		return project, err
-	}
-	project = query.Project()
-
-	items, err := paginateAttributes(c, query, variables, queryName, "firstItems", "afterItems", limit, query.Nodes())
-	if err != nil {
-		return project, err
-	}
-
-	project.Items.Nodes = items
-	return project, nil
+func (c *Client) ProjectItems(_ *Owner, _ int32, _ int, _ string) (*Project, error) {
+	return &Project{}, api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // pager is an interface for paginating over the attributes of a Project.
@@ -935,11 +873,9 @@ func paginateAttributes[N projectAttribute](c *Client, p pager[N], variables map
 
 		if len(nodes)+LimitMax > limit {
 			first := limit - len(nodes)
-			variables[firstKey] = githubv4.Int(first)
+			variables[firstKey] = first
 		}
-
-		// set the cursor to the end of the last page
-		variables[afterKey] = (*githubv4.String)(&cursor)
+		variables[afterKey] = cursor
 		err := c.doQueryWithProgressIndicator(queryName, p, variables)
 		if err != nil {
 			return nodes, err
@@ -1077,50 +1013,8 @@ func (p ProjectFields) ExportData(_ []string) map[string]any {
 
 // ProjectFields returns a project with fields. If the OwnerType is VIEWER, no login is required.
 // If limit is 0, the default limit is used.
-func (c *Client) ProjectFields(o *Owner, number int32, limit int) (*Project, error) {
-	project := &Project{}
-	if limit == 0 {
-		limit = LimitDefault
-	}
-
-	// set first to the min of limit and LimitMax
-	first := min(limit, LimitMax)
-	variables := map[string]any{
-		"firstItems":  githubv4.Int(LimitMax),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(first),
-		"afterFields": (*githubv4.String)(nil),
-		"number":      githubv4.Int(number),
-	}
-
-	var query pager[ProjectField]
-	var queryName string
-	switch o.Type {
-	case UserOwner:
-		variables["login"] = githubv4.String(o.Login)
-		query = &userOwnerWithFields{}
-		queryName = "UserProjectWithFields"
-	case OrgOwner:
-		variables["login"] = githubv4.String(o.Login)
-		query = &orgOwnerWithFields{}
-		queryName = "OrgProjectWithFields"
-	case ViewerOwner:
-		query = &viewerOwnerWithFields{}
-		queryName = "ViewerProjectWithFields"
-	}
-	err := c.doQueryWithProgressIndicator(queryName, query, variables)
-	if err != nil {
-		return project, err
-	}
-	project = query.Project()
-
-	fields, err := paginateAttributes(c, query, variables, queryName, "firstFields", "afterFields", limit, query.Nodes())
-	if err != nil {
-		return project, err
-	}
-
-	project.Fields.Nodes = fields
-	return project, nil
+func (c *Client) ProjectFields(_ *Owner, _ int32, _ int) (*Project, error) {
+	return &Project{}, api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // viewerLogin is used to query the Login of the viewer.
@@ -1236,48 +1130,9 @@ func (c *Client) ViewerLoginName() (string, error) {
 	return query.Viewer.Login, nil
 }
 
-// OwnerIDAndType returns the ID and OwnerType. The special login "@me" or an empty string queries the current user.
-func (c *Client) OwnerIDAndType(login string) (string, OwnerType, error) {
-	if login == "@me" || login == "" {
-		var query viewerLogin
-		err := c.doQueryWithProgressIndicator("ViewerOwner", &query, nil)
-		if err != nil {
-			return "", "", err
-		}
-		return query.Viewer.Id, ViewerOwner, nil
-	}
-
-	variables := map[string]any{
-		"login": githubv4.String(login),
-	}
-	var query struct {
-		User struct {
-			Login string
-			Id    string
-		} `graphql:"user(login: $login)"`
-		Organization struct {
-			Login string
-			Id    string
-		} `graphql:"organization(login: $login)"`
-	}
-
-	err := c.doQueryWithProgressIndicator("UserOrgOwner", &query, variables)
-	if err != nil {
-		// Due to the way the queries are structured, we don't know if a login belongs to a user
-		// or to an org, even though they are unique. To deal with this, we try both - if neither
-		// is found, we return the error.
-		if graphErr, ok := errors.AsType[api.GraphQLError](err); ok {
-			if graphErr.Match("NOT_FOUND", "user") && graphErr.Match("NOT_FOUND", "organization") {
-				return "", "", err
-			} else if graphErr.Match("NOT_FOUND", "organization") { // org isn't found must be a user
-				return query.User.Id, UserOwner, nil
-			} else if graphErr.Match("NOT_FOUND", "user") { // user isn't found must be an org
-				return query.Organization.Id, OrgOwner, nil
-			}
-		}
-	}
-
-	return "", "", errors.New("unknown owner type")
+// OwnerIDAndType returns NotSupportedError because project owners use GraphQL node IDs.
+func (c *Client) OwnerIDAndType(_ string) (string, OwnerType, error) {
+	return "", "", api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // issueOrPullRequest is used to query the global id of an issue or pull request by its URL.
@@ -1293,26 +1148,9 @@ type issueOrPullRequest struct {
 	} `graphql:"resource(url: $url)"`
 }
 
-// IssueOrPullRequestID returns the ID of the issue or pull request from a URL.
-func (c *Client) IssueOrPullRequestID(rawURL string) (string, error) {
-	uri, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-	variables := map[string]any{
-		"url": githubv4.URI{URL: uri},
-	}
-	var query issueOrPullRequest
-	err = c.doQueryWithProgressIndicator("GetIssueOrPullRequest", &query, variables)
-	if err != nil {
-		return "", err
-	}
-	if query.Resource.Typename == "Issue" {
-		return query.Resource.Issue.ID, nil
-	} else if query.Resource.Typename == "PullRequest" {
-		return query.Resource.PullRequest.ID, nil
-	}
-	return "", errors.New("resource not found, please check the URL")
+// IssueOrPullRequestID returns NotSupportedError because GitHub Projects is not supported with REST.
+func (c *Client) IssueOrPullRequestID(_ string) (string, error) {
+	return "", api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // userProjects queries the $first projects of a user.
@@ -1357,72 +1195,12 @@ type loginTypes struct {
 	ID    string
 }
 
-// userOrgLogins gets all the logins of the viewer and the organizations the viewer is a member of.
 func (c *Client) userOrgLogins() ([]loginTypes, error) {
-	l := make([]loginTypes, 0)
-	var v viewerLoginOrgs
-	variables := map[string]any{
-		"after": (*githubv4.String)(nil),
-	}
-
-	err := c.doQueryWithProgressIndicator("ViewerLoginAndOrgs", &v, variables)
-	if err != nil {
-		return l, err
-	}
-
-	// add the user
-	l = append(l, loginTypes{
-		Login: v.Viewer.Login,
-		Type:  ViewerOwner,
-		ID:    v.Viewer.ID,
-	})
-
-	// add orgs where the user can create projects
-	for _, org := range v.Viewer.Organizations.Nodes {
-		if org.ViewerCanCreateProjects {
-			l = append(l, loginTypes{
-				Login: org.Login,
-				Type:  OrgOwner,
-				ID:    org.ID,
-			})
-		}
-	}
-
-	// this seem unlikely, but if there are more org logins, paginate the rest
-	if v.Viewer.Organizations.PageInfo.HasNextPage {
-		return c.paginateOrgLogins(l, string(v.Viewer.Organizations.PageInfo.EndCursor))
-	}
-
-	return l, nil
+	return nil, api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
-// paginateOrgLogins after cursor and append them to the list of logins.
-func (c *Client) paginateOrgLogins(l []loginTypes, cursor string) ([]loginTypes, error) {
-	var v viewerLoginOrgs
-	variables := map[string]any{
-		"after": githubv4.String(cursor),
-	}
-
-	err := c.doQueryWithProgressIndicator("ViewerLoginAndOrgs", &v, variables)
-	if err != nil {
-		return l, err
-	}
-
-	for _, org := range v.Viewer.Organizations.Nodes {
-		if org.ViewerCanCreateProjects {
-			l = append(l, loginTypes{
-				Login: org.Login,
-				Type:  OrgOwner,
-				ID:    org.ID,
-			})
-		}
-	}
-
-	if v.Viewer.Organizations.PageInfo.HasNextPage {
-		return c.paginateOrgLogins(l, string(v.Viewer.Organizations.PageInfo.EndCursor))
-	}
-
-	return l, nil
+func (c *Client) paginateOrgLogins(l []loginTypes, _ string) ([]loginTypes, error) {
+	return l, api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 type Owner struct {
@@ -1482,146 +1260,17 @@ func (c *Client) NewOwner(canPrompt bool, login string) (*Owner, error) {
 // if number is 0 it will prompt the user to select a project interactively
 // otherwise it will make a request to get the project by number
 // set `fields“ to true to get the project's field data
-func (c *Client) NewProject(canPrompt bool, o *Owner, number int32, fields bool) (*Project, error) {
-	if number != 0 {
-		variables := map[string]any{
-			"number":      githubv4.Int(number),
-			"firstItems":  githubv4.Int(0),
-			"afterItems":  (*githubv4.String)(nil),
-			"firstFields": githubv4.Int(0),
-			"afterFields": (*githubv4.String)(nil),
-		}
-
-		if fields {
-			variables["firstFields"] = githubv4.Int(LimitMax)
-		}
-		if o.Type == UserOwner {
-			var query userOwner
-			variables["login"] = githubv4.String(o.Login)
-			err := c.doQueryWithProgressIndicator("UserProject", &query, variables)
-			return newProjectFromQueryWithoutItemsQuery(query.Owner.Project), err
-		} else if o.Type == OrgOwner {
-			variables["login"] = githubv4.String(o.Login)
-			var query orgOwner
-			err := c.doQueryWithProgressIndicator("OrgProject", &query, variables)
-			return newProjectFromQueryWithoutItemsQuery(query.Owner.Project), err
-		} else if o.Type == ViewerOwner {
-			var query viewerOwner
-			err := c.doQueryWithProgressIndicator("ViewerProject", &query, variables)
-			return newProjectFromQueryWithoutItemsQuery(query.Owner.Project), err
-		}
-		return nil, errors.New("unknown owner type")
-	}
-
-	if !canPrompt {
+func (c *Client) NewProject(canPrompt bool, _ *Owner, number int32, _ bool) (*Project, error) {
+	if number == 0 && !canPrompt {
 		return nil, fmt.Errorf("project number is required when not running interactively")
 	}
-
-	projects, err := c.Projects(o.Login, o.Type, 0, fields)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(projects.Nodes) == 0 {
-		return nil, fmt.Errorf("no projects found for %s", o.Login)
-	}
-
-	options := make([]string, 0, len(projects.Nodes))
-	for _, p := range projects.Nodes {
-		title := fmt.Sprintf("%s (#%d)", p.Title, p.Number)
-		options = append(options, title)
-	}
-
-	answerIndex, err := c.prompter.Select("Which project would you like to use?", "", options)
-	if err != nil {
-		return nil, err
-	}
-
-	return &projects.Nodes[answerIndex], nil
+	return nil, api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // Projects returns all the projects for an Owner. If the OwnerType is VIEWER, no login is required.
 // If limit is 0, the default limit is used.
-func (c *Client) Projects(login string, t OwnerType, limit int, fields bool) (Projects, error) {
-	projects := Projects{
-		Nodes: make([]Project, 0),
-	}
-	cursor := (*githubv4.String)(nil)
-	hasNextPage := false
-
-	if limit == 0 {
-		limit = LimitDefault
-	}
-
-	// set first to the min of limit and LimitMax
-	first := min(limit, LimitMax)
-
-	variables := map[string]any{
-		"first":       githubv4.Int(first),
-		"after":       cursor,
-		"firstItems":  githubv4.Int(0),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(0),
-		"afterFields": (*githubv4.String)(nil),
-	}
-
-	if fields {
-		variables["firstFields"] = githubv4.Int(LimitMax)
-	}
-
-	if t != ViewerOwner {
-		variables["login"] = githubv4.String(login)
-	}
-	// loop until we get all the projects
-	for {
-		// the code below is very repetitive, the only real difference being the type of the query
-		// and the query variables. I couldn't figure out a way to make this cleaner that was worth
-		// the cost.
-		if t == UserOwner {
-			var query userProjects
-			if err := c.doQueryWithProgressIndicator("UserProjects", &query, variables); err != nil {
-				return projects, err
-			}
-			for _, p := range query.Owner.Projects.Nodes {
-				projects.Nodes = append(projects.Nodes, *newProjectFromQueryWithoutItemsQuery(p))
-			}
-			hasNextPage = query.Owner.Projects.PageInfo.HasNextPage
-			cursor = &query.Owner.Projects.PageInfo.EndCursor
-			projects.TotalCount = query.Owner.Projects.TotalCount
-		} else if t == OrgOwner {
-			var query orgProjects
-			if err := c.doQueryWithProgressIndicator("OrgProjects", &query, variables); err != nil {
-				return projects, err
-			}
-			for _, p := range query.Owner.Projects.Nodes {
-				projects.Nodes = append(projects.Nodes, *newProjectFromQueryWithoutItemsQuery(p))
-			}
-			hasNextPage = query.Owner.Projects.PageInfo.HasNextPage
-			cursor = &query.Owner.Projects.PageInfo.EndCursor
-			projects.TotalCount = query.Owner.Projects.TotalCount
-		} else if t == ViewerOwner {
-			var query viewerProjects
-			if err := c.doQueryWithProgressIndicator("ViewerProjects", &query, variables); err != nil {
-				return projects, err
-			}
-			for _, p := range query.Owner.Projects.Nodes {
-				projects.Nodes = append(projects.Nodes, *newProjectFromQueryWithoutItemsQuery(p))
-			}
-			hasNextPage = query.Owner.Projects.PageInfo.HasNextPage
-			cursor = &query.Owner.Projects.PageInfo.EndCursor
-			projects.TotalCount = query.Owner.Projects.TotalCount
-		}
-
-		if !hasNextPage || len(projects.Nodes) >= limit {
-			return projects, nil
-		}
-
-		if len(projects.Nodes)+LimitMax > limit {
-			first := limit - len(projects.Nodes)
-			variables["first"] = githubv4.Int(first)
-		}
-		variables["after"] = cursor
-	}
+func (c *Client) Projects(_ string, _ OwnerType, _ int, _ bool) (Projects, error) {
+	return Projects{Nodes: make([]Project, 0)}, api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 type linkProjectToRepoMutation struct {
@@ -1649,76 +1298,26 @@ type unlinkProjectFromTeamMutation struct {
 }
 
 // LinkProjectToRepository links a project to a repository.
-func (c *Client) LinkProjectToRepository(projectID string, repoID string) error {
-	var mutation linkProjectToRepoMutation
-	variables := map[string]any{
-		"input": githubv4.LinkProjectV2ToRepositoryInput{
-			ProjectID:    githubv4.String(projectID),
-			RepositoryID: githubv4.ID(repoID),
-		},
-	}
-
-	return c.Mutate("LinkProjectV2ToRepository", &mutation, variables)
+func (c *Client) LinkProjectToRepository(_, _ string) error {
+	return api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // LinkProjectToTeam links a project to a team.
-func (c *Client) LinkProjectToTeam(projectID string, teamID string) error {
-	var mutation linkProjectToTeamMutation
-	variables := map[string]any{
-		"input": githubv4.LinkProjectV2ToTeamInput{
-			ProjectID: githubv4.String(projectID),
-			TeamID:    githubv4.ID(teamID),
-		},
-	}
-
-	return c.Mutate("LinkProjectV2ToTeam", &mutation, variables)
+func (c *Client) LinkProjectToTeam(_, _ string) error {
+	return api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // UnlinkProjectFromRepository unlinks a project from a repository.
-func (c *Client) UnlinkProjectFromRepository(projectID string, repoID string) error {
-	var mutation unlinkProjectFromRepoMutation
-	variables := map[string]any{
-		"input": githubv4.UnlinkProjectV2FromRepositoryInput{
-			ProjectID:    githubv4.String(projectID),
-			RepositoryID: githubv4.ID(repoID),
-		},
-	}
-
-	return c.Mutate("UnlinkProjectV2FromRepository", &mutation, variables)
+func (c *Client) UnlinkProjectFromRepository(_, _ string) error {
+	return api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 // UnlinkProjectFromTeam unlinks a project from a team.
-func (c *Client) UnlinkProjectFromTeam(projectID string, teamID string) error {
-	var mutation unlinkProjectFromTeamMutation
-	variables := map[string]any{
-		"input": githubv4.UnlinkProjectV2FromTeamInput{
-			ProjectID: githubv4.String(projectID),
-			TeamID:    githubv4.ID(teamID),
-		},
-	}
-
-	return c.Mutate("UnlinkProjectV2FromTeam", &mutation, variables)
+func (c *Client) UnlinkProjectFromTeam(_, _ string) error {
+	return api.NotSupportedError("GitHub Projects is not supported with REST")
 }
 
 func handleError(err error) error {
-	if gerr, ok := errors.AsType[api.GraphQLError](err); ok {
-		missing := set.NewStringSet()
-		for _, e := range gerr.Errors {
-			if e.Type != "INSUFFICIENT_SCOPES" {
-				continue
-			}
-			missing.AddValues(requiredScopesFromServerMessage(e.Message))
-		}
-		if missing.Len() > 0 {
-			s := missing.ToSlice()
-			// TODO: this duplicates parts of generateScopesSuggestion
-			return fmt.Errorf(
-				"error: your authentication token is missing required scopes %v\n"+
-					"To request it, run:  gh auth refresh -s %s",
-				s,
-				strings.Join(s, ","))
-		}
-	}
 	return err
 }
 

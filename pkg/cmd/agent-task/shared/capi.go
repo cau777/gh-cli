@@ -45,27 +45,9 @@ func CapiClientFunc(f *cmdutil.Factory) func() (capi.CapiClient, error) {
 	}
 }
 
-// resolveCapiURL queries the GitHub API for the Copilot API endpoint URL.
-func resolveCapiURL(httpClient *http.Client, host string) (string, error) {
-	apiClient := api.NewClientFromHTTP(httpClient)
-
-	var resp struct {
-		Viewer struct {
-			CopilotEndpoints struct {
-				Api string `graphql:"api"`
-			} `graphql:"copilotEndpoints"`
-		} `graphql:"viewer"`
-	}
-
-	if err := apiClient.Query(host, "CopilotEndpoints", &resp, nil); err != nil {
-		return "", err
-	}
-
-	if resp.Viewer.CopilotEndpoints.Api == "" {
-		return "", errors.New("empty Copilot API URL returned")
-	}
-
-	return resp.Viewer.CopilotEndpoints.Api, nil
+// resolveCapiURL returns NotSupportedError because Copilot API endpoint discovery uses GraphQL.
+func resolveCapiURL(_ *http.Client, _ string) (string, error) {
+	return "", api.NotSupportedError("resolving Copilot API endpoints is not supported with REST")
 }
 
 func IsSessionID(s string) bool {

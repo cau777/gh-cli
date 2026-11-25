@@ -3,12 +3,13 @@ package fielddelete
 import (
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/google/shlex"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/h2non/gock.v1"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCmdDeleteField(t *testing.T) {
@@ -76,28 +77,10 @@ func TestNewCmdDeleteField(t *testing.T) {
 	}
 }
 
-func TestRunDeleteField(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// delete Field
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`{"query":"mutation DeleteField.*","variables":{"input":{"fieldId":"an ID"}}}`).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"deleteProjectV2Field": map[string]any{
-					"projectV2Field": map[string]any{
-						"id": "Field ID",
-					},
-				},
-			},
-		})
-
+func TestRunDeleteField_NotSupported(t *testing.T) {
 	client := queries.NewTestClient()
 
-	ios, _, stdout, _ := iostreams.Test()
+	ios, _, _, _ := iostreams.Test()
 	ios.SetStdoutTTY(true)
 	config := deleteFieldConfig{
 		opts: deleteFieldOpts{
@@ -108,50 +91,5 @@ func TestRunDeleteField(t *testing.T) {
 	}
 
 	err := runDeleteField(config)
-	assert.NoError(t, err)
-	assert.Equal(
-		t,
-		"Deleted field\n",
-		stdout.String())
-}
-
-func TestRunDeleteField_JSON(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// delete Field
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`{"query":"mutation DeleteField.*","variables":{"input":{"fieldId":"an ID"}}}`).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"deleteProjectV2Field": map[string]any{
-					"projectV2Field": map[string]any{
-						"__typename": "ProjectV2Field",
-						"id":         "Field ID",
-						"name":       "a name",
-					},
-				},
-			},
-		})
-
-	client := queries.NewTestClient()
-
-	ios, _, stdout, _ := iostreams.Test()
-	config := deleteFieldConfig{
-		opts: deleteFieldOpts{
-			fieldID:  "an ID",
-			exporter: cmdutil.NewJSONExporter(),
-		},
-		client: client,
-		io:     ios,
-	}
-
-	err := runDeleteField(config)
-	assert.NoError(t, err)
-	assert.JSONEq(
-		t,
-		`{"id":"Field ID","name":"a name","type":"ProjectV2Field"}`,
-		stdout.String())
+	require.ErrorIs(t, err, api.ErrNotSupported)
 }

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/h2non/gock.v1"
 )
 
 func TestResolveSingleSelectOptionID(t *testing.T) {
@@ -73,54 +73,7 @@ func TestResolveSingleSelectOptionID(t *testing.T) {
 }
 
 func TestProjectItemIDByURL(t *testing.T) {
-	t.Run("returns the item id for the matching project", func(t *testing.T) {
-		defer gock.Off()
-		gock.New("https://api.github.com").
-			Post("/graphql").
-			Reply(200).
-			JSON(map[string]any{
-				"data": map[string]any{
-					"resource": map[string]any{
-						"__typename": "Issue",
-						"projectItems": map[string]any{
-							"nodes": []map[string]any{
-								{"id": "PVTI_other", "project": map[string]any{"id": "PVT_other"}},
-								{"id": "PVTI_match", "project": map[string]any{"id": "PVT_target"}},
-							},
-						},
-					},
-				},
-			})
-
-		client := NewTestClient()
-		id, err := client.ProjectItemIDByURL("https://github.com/monalisa/repo/issues/1", "PVT_target", 5)
-		require.NoError(t, err)
-		assert.Equal(t, "PVTI_match", id)
-	})
-
-	t.Run("errors when the resource is not an item on the project", func(t *testing.T) {
-		defer gock.Off()
-		gock.New("https://api.github.com").
-			Post("/graphql").
-			Reply(200).
-			JSON(map[string]any{
-				"data": map[string]any{
-					"resource": map[string]any{
-						"__typename": "Issue",
-						"projectItems": map[string]any{
-							"nodes": []map[string]any{
-								{"id": "PVTI_other", "project": map[string]any{"id": "PVT_other"}},
-							},
-						},
-					},
-				},
-			})
-
-		client := NewTestClient()
-		_, err := client.ProjectItemIDByURL("https://github.com/monalisa/repo/issues/1", "PVT_target", 5)
-		require.Error(t, err)
-		var nip *ItemNotInProjectError
-		require.True(t, errors.As(err, &nip))
-		assert.Contains(t, err.Error(), "is not an item in project 5")
-	})
+	client := NewTestClient()
+	_, err := client.ProjectItemIDByURL("https://github.com/monalisa/repo/issues/1", "PVT_target", 5)
+	require.ErrorIs(t, err, api.ErrNotSupported)
 }

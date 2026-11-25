@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +28,7 @@ type deleteItemConfig struct {
 
 type deleteProjectItemMutation struct {
 	DeleteProjectItem struct {
-		DeletedItemId githubv4.ID `graphql:"deletedItemId"`
+		DeletedItemId string `graphql:"deletedItemId"`
 	} `graphql:"deleteProjectV2Item(input:$input)"`
 }
 
@@ -109,9 +108,9 @@ func runDeleteItem(config deleteItemConfig) error {
 
 func deleteItemArgs(config deleteItemConfig) (*deleteProjectItemMutation, map[string]any) {
 	return &deleteProjectItemMutation{}, map[string]any{
-		"input": githubv4.DeleteProjectV2ItemInput{
-			ProjectID: githubv4.ID(config.opts.projectID),
-			ItemID:    githubv4.ID(config.opts.itemID),
+		"input": map[string]any{
+			"projectId": config.opts.projectID,
+			"itemId":    config.opts.itemID,
 		},
 	}
 }
@@ -125,7 +124,7 @@ func printResults(config deleteItemConfig) error {
 	return err
 }
 
-func printJSON(config deleteItemConfig, id githubv4.ID) error {
+func printJSON(config deleteItemConfig, id string) error {
 	m := map[string]any{
 		"id": id,
 	}

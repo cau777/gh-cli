@@ -7,7 +7,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -78,8 +77,8 @@ func runDeleteField(config deleteFieldConfig) error {
 
 func deleteFieldArgs(config deleteFieldConfig) (*deleteProjectV2FieldMutation, map[string]any) {
 	return &deleteProjectV2FieldMutation{}, map[string]any{
-		"input": githubv4.DeleteProjectV2FieldInput{
-			FieldID: githubv4.ID(config.opts.fieldID),
+		"input": map[string]any{
+			"fieldId": config.opts.fieldID,
 		},
 	}
 }

@@ -8,13 +8,11 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/safeurl"
-	"github.com/shurcooL/githubv4"
 )
 
 const AgentsHomeURL = "https://github.com/copilot/agents"
@@ -47,26 +45,6 @@ type session struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
-}
-
-// A shim of a full pull request because looking up by node ID
-// using the full api.PullRequest type fails on unions (actors)
-type sessionPullRequest struct {
-	ID             string
-	FullDatabaseID string
-	Number         int
-	Title          string
-	State          string
-	URL            string
-	Body           string
-	IsDraft        bool
-
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ClosedAt  *time.Time
-	MergedAt  *time.Time
-
-	Repository *api.PRRepository
 }
 
 // Session is a hydrated in-flight agent task
@@ -422,89 +400,14 @@ func (c *CAPIClient) ListSessionsByResourceID(ctx context.Context, resourceType 
 	return result, nil
 }
 
-// hydrateSessionPullRequestsAndUsers hydrates pull request and user information in sessions
+// hydrateSessionPullRequestsAndUsers returns NotSupportedError because resolving arbitrary
+// pull request and user node IDs requires GraphQL.
 func (c *CAPIClient) hydrateSessionPullRequestsAndUsers(sessions []session) ([]*Session, error) {
 	if len(sessions) == 0 {
 		return nil, nil
 	}
 
-	prNodeIds := make([]string, 0, len(sessions))
-	userNodeIds := make([]string, 0, len(sessions))
-	for _, session := range sessions {
-		if session.ResourceType == "pull" {
-			prNodeID := session.ResourceGlobalID
-			// TODO: probably this can be dropped since the API should always
-			// keep returning the resource global ID.
-			if session.ResourceGlobalID == "" {
-				prNodeID = generatePullRequestNodeID(int64(session.RepoID), session.ResourceID)
-			}
-			if !slices.Contains(prNodeIds, prNodeID) {
-				prNodeIds = append(prNodeIds, prNodeID)
-			}
-		}
-
-		userNodeId := generateUserNodeID(session.UserID)
-		if !slices.Contains(userNodeIds, userNodeId) {
-			userNodeIds = append(userNodeIds, userNodeId)
-		}
-	}
-	apiClient := api.NewClientFromHTTP(c.httpClient)
-
-	var resp struct {
-		Nodes []struct {
-			TypeName    string             `graphql:"__typename"`
-			PullRequest sessionPullRequest `graphql:"... on PullRequest"`
-			User        api.GitHubUser     `graphql:"... on User"`
-		} `graphql:"nodes(ids: $ids)"`
-	}
-
-	ids := make([]string, 0, len(prNodeIds)+len(userNodeIds))
-	ids = append(ids, prNodeIds...)
-	ids = append(ids, userNodeIds...)
-
-	// TODO handle pagination
-	err := apiClient.Query(c.host, "FetchPRsAndUsersForAgentTaskSessions", &resp, map[string]any{
-		"ids": ids,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	prMap := make(map[string]*api.PullRequest, len(prNodeIds))
-	userMap := make(map[int64]*api.GitHubUser, len(userNodeIds))
-	for _, node := range resp.Nodes {
-		switch node.TypeName {
-		case "User":
-			userMap[node.User.DatabaseID] = &node.User
-		case "PullRequest":
-			prMap[node.PullRequest.FullDatabaseID] = &api.PullRequest{
-				ID:             node.PullRequest.ID,
-				FullDatabaseID: node.PullRequest.FullDatabaseID,
-				Number:         node.PullRequest.Number,
-				Title:          node.PullRequest.Title,
-				State:          node.PullRequest.State,
-				IsDraft:        node.PullRequest.IsDraft,
-				URL:            node.PullRequest.URL,
-				Body:           node.PullRequest.Body,
-				CreatedAt:      node.PullRequest.CreatedAt,
-				UpdatedAt:      node.PullRequest.UpdatedAt,
-				ClosedAt:       node.PullRequest.ClosedAt,
-				MergedAt:       node.PullRequest.MergedAt,
-				Repository:     node.PullRequest.Repository,
-			}
-		}
-	}
-
-	newSessions := make([]*Session, 0, len(sessions))
-	for _, s := range sessions {
-		newSession := fromAPISession(s)
-		newSession.PullRequest = prMap[strconv.FormatInt(s.ResourceID, 10)]
-		newSession.User = userMap[s.UserID]
-		newSessions = append(newSessions, newSession)
-	}
-
-	return newSessions, nil
+	return nil, api.NotSupportedError("hydrating agent task sessions by GraphQL node ID is not supported with REST")
 }
 
 // GetPullRequestDatabaseID retrieves the database ID and URL of a pull request given its number in a repository.
@@ -516,41 +419,22 @@ func (c *CAPIClient) GetPullRequestDatabaseID(ctx context.Context, hostname stri
 		return 0, "", fmt.Errorf("pull request number %d out of bounds", number)
 	}
 
-	var resp struct {
-		Repository struct {
-			PullRequest struct {
-				FullDatabaseID string `graphql:"fullDatabaseId"`
-				URL            string `graphql:"url"`
-			} `graphql:"pullRequest(number: $number)"`
-		} `graphql:"repository(owner: $owner, name: $repo)"`
-	}
-
-	variables := map[string]any{
-		"owner":  githubv4.String(owner),
-		"repo":   githubv4.String(repo),
-		"number": githubv4.Int(number),
-	}
-
-	apiClient := api.NewClientFromHTTP(c.httpClient)
-	if err := apiClient.Query(hostname, "GetPullRequestFullDatabaseID", &resp, variables); err != nil {
-		return 0, "", err
-	}
-
-	databaseID, err := strconv.ParseInt(resp.Repository.PullRequest.FullDatabaseID, 10, 64)
+	path, err := safeurl.JoinPath("repos", owner, repo, "pulls", strconv.Itoa(number))
 	if err != nil {
 		return 0, "", err
 	}
-	return databaseID, resp.Repository.PullRequest.URL, nil
-}
 
-// generatePullRequestNodeID converts an int64 databaseID and repoID to a GraphQL Node ID format
-// with the "PR_" prefix for pull requests
-func generatePullRequestNodeID(repoID, pullRequestID int64) string {
-	return "PR_" + api.EncodeNodeID(0, repoID, pullRequestID)
-}
+	var resp struct {
+		ID      int64  `json:"id"`
+		HTMLURL string `json:"html_url"`
+	}
 
-func generateUserNodeID(userID int64) string {
-	return "U_" + api.EncodeNodeID(0, userID)
+	apiClient := api.NewClientFromHTTP(c.httpClient)
+	if err := apiClient.REST(hostname, http.MethodGet, path.String(), nil, &resp); err != nil {
+		return 0, "", err
+	}
+
+	return resp.ID, resp.HTMLURL, nil
 }
 
 func fromAPISession(s session) *Session {

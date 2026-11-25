@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -117,30 +116,30 @@ func runEdit(config editConfig) error {
 }
 
 func editArgs(config editConfig) (*updateProjectMutation, map[string]any) {
-	variables := githubv4.UpdateProjectV2Input{ProjectID: githubv4.ID(config.opts.projectID)}
+	variables := map[string]any{"projectId": config.opts.projectID}
 	if config.opts.title != "" {
-		variables.Title = new(githubv4.String(config.opts.title))
+		variables["title"] = config.opts.title
 	}
 	if config.opts.shortDescription != "" {
-		variables.ShortDescription = new(githubv4.String(config.opts.shortDescription))
+		variables["shortDescription"] = config.opts.shortDescription
 	}
 	if config.opts.readme != "" {
-		variables.Readme = new(githubv4.String(config.opts.readme))
+		variables["readme"] = config.opts.readme
 	}
 	if config.opts.visibility != "" {
 		if config.opts.visibility == projectVisibilityPublic {
-			variables.Public = githubv4.NewBoolean(githubv4.Boolean(true))
+			variables["public"] = true
 		} else if config.opts.visibility == projectVisibilityPrivate {
-			variables.Public = githubv4.NewBoolean(githubv4.Boolean(false))
+			variables["public"] = false
 		}
 	}
 
 	return &updateProjectMutation{}, map[string]any{
 		"input":       variables,
-		"firstItems":  githubv4.Int(0),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(0),
-		"afterFields": (*githubv4.String)(nil),
+		"firstItems":  0,
+		"afterItems":  nil,
+		"firstFields": 0,
+		"afterFields": nil,
 	}
 }
 

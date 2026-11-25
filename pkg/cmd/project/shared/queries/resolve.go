@@ -2,10 +2,9 @@ package queries
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
-	"github.com/shurcooL/githubv4"
+	"github.com/cli/cli/v2/api"
 )
 
 // This file holds name-based resolution for ProjectV2 fields, single-select
@@ -150,42 +149,6 @@ type projectItemByURL struct {
 //
 // The projectItems connection is read with a bounded page size; very large
 // boards may exceed it.
-func (c *Client) ProjectItemIDByURL(rawURL, projectID string, projectNumber int32) (string, error) {
-	uri, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-
-	variables := map[string]any{
-		"url":        githubv4.URI{URL: uri},
-		"firstItems": githubv4.Int(LimitMax),
-	}
-
-	var query projectItemByURL
-	if err := c.doQueryWithProgressIndicator("GetProjectItemByURL", &query, variables); err != nil {
-		return "", err
-	}
-
-	var nodes []struct {
-		ID      string
-		Project struct {
-			ID string
-		}
-	}
-	switch query.Resource.Typename {
-	case "Issue":
-		nodes = query.Resource.Issue.ProjectItems.Nodes
-	case "PullRequest":
-		nodes = query.Resource.PullRequest.ProjectItems.Nodes
-	default:
-		return "", fmt.Errorf("resource not found, please check the URL: %s", rawURL)
-	}
-
-	for _, n := range nodes {
-		if n.Project.ID == projectID {
-			return n.ID, nil
-		}
-	}
-
-	return "", &ItemNotInProjectError{URL: rawURL, ProjectNumber: projectNumber}
+func (c *Client) ProjectItemIDByURL(_, _ string, _ int32) (string, error) {
+	return "", api.NotSupportedError("GitHub Projects is not supported with REST")
 }

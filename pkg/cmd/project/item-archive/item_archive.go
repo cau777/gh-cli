@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -129,18 +128,18 @@ func runArchiveItem(config archiveItemConfig) error {
 
 func archiveItemArgs(config archiveItemConfig) (*archiveProjectItemMutation, map[string]any) {
 	return &archiveProjectItemMutation{}, map[string]any{
-		"input": githubv4.ArchiveProjectV2ItemInput{
-			ProjectID: githubv4.ID(config.opts.projectID),
-			ItemID:    githubv4.ID(config.opts.itemID),
+		"input": map[string]any{
+			"projectId": config.opts.projectID,
+			"itemId":    config.opts.itemID,
 		},
 	}
 }
 
 func unarchiveItemArgs(config archiveItemConfig, itemID string) (*unarchiveProjectItemMutation, map[string]any) {
 	return &unarchiveProjectItemMutation{}, map[string]any{
-		"input": githubv4.UnarchiveProjectV2ItemInput{
-			ProjectID: githubv4.ID(config.opts.projectID),
-			ItemID:    githubv4.ID(itemID),
+		"input": map[string]any{
+			"projectId": config.opts.projectID,
+			"itemId":    itemID,
 		},
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
 
@@ -121,16 +120,16 @@ func runCopy(config copyConfig) error {
 
 func copyArgs(config copyConfig) (*copyProjectMutation, map[string]any) {
 	return &copyProjectMutation{}, map[string]any{
-		"input": githubv4.CopyProjectV2Input{
-			OwnerID:            githubv4.ID(config.opts.ownerID),
-			ProjectID:          githubv4.ID(config.opts.projectID),
-			Title:              githubv4.String(config.opts.title),
-			IncludeDraftIssues: new(githubv4.Boolean(config.opts.includeDraftIssues)),
+		"input": map[string]any{
+			"ownerId":            config.opts.ownerID,
+			"projectId":          config.opts.projectID,
+			"title":              config.opts.title,
+			"includeDraftIssues": config.opts.includeDraftIssues,
 		},
-		"firstItems":  githubv4.Int(0),
-		"afterItems":  (*githubv4.String)(nil),
-		"firstFields": githubv4.Int(0),
-		"afterFields": (*githubv4.String)(nil),
+		"firstItems":  0,
+		"afterItems":  nil,
+		"firstFields": 0,
+		"afterFields": nil,
 	}
 }
 

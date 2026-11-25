@@ -3,12 +3,13 @@ package marktemplate
 import (
 	"testing"
 
+	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/google/shlex"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/h2non/gock.v1"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCmdMarkTemplate(t *testing.T) {
@@ -89,81 +90,11 @@ func TestNewCmdMarkTemplate(t *testing.T) {
 	}
 }
 
-func TestRunMarkTemplate_Org(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// get org ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserOrgOwner.*",
-			"variables": map[string]any{
-				"login": "github",
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"id": "an ID",
-				},
-			},
-			"errors": []any{
-				map[string]any{
-					"type": "NOT_FOUND",
-					"path": []string{"user"},
-				},
-			},
-		})
-
-	// get project ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query OrgProject.*",
-			"variables": map[string]any{
-				"login":       "github",
-				"number":      1,
-				"firstItems":  0,
-				"afterItems":  nil,
-				"firstFields": 0,
-				"afterFields": nil,
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"projectV2": map[string]any{
-						"id": "an ID",
-					},
-				},
-			},
-		})
-
-	// template project
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`{"query":"mutation MarkProjectTemplate.*","variables":{"afterFields":null,"afterItems":null,"firstFields":0,"firstItems":0,"input":{"projectId":"an ID"}}}`).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"markProjectV2AsTemplate": map[string]any{
-					"projectV2": map[string]any{
-						"id":     "project ID",
-						"number": 1,
-					},
-				},
-			},
-		})
-
+func TestRunMarkTemplate_NotSupported(t *testing.T) {
 	client := queries.NewTestClient()
-
-	ios, _, stdout, _ := iostreams.Test()
+	ios, _, _, _ := iostreams.Test()
 	ios.SetStdoutTTY(true)
+
 	config := markTemplateConfig{
 		opts: markTemplateOpts{
 			owner:  "github",
@@ -174,198 +105,5 @@ func TestRunMarkTemplate_Org(t *testing.T) {
 	}
 
 	err := runMarkTemplate(config)
-	assert.NoError(t, err)
-	assert.Equal(
-		t,
-		"Marked project 1 as a template.\n",
-		stdout.String())
-}
-
-func TestRunUnmarkTemplate_Org(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// get org ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserOrgOwner.*",
-			"variables": map[string]any{
-				"login": "github",
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"id": "an ID",
-				},
-			},
-			"errors": []any{
-				map[string]any{
-					"type": "NOT_FOUND",
-					"path": []string{"user"},
-				},
-			},
-		})
-
-	// get project ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query OrgProject.*",
-			"variables": map[string]any{
-				"login":       "github",
-				"number":      1,
-				"firstItems":  0,
-				"afterItems":  nil,
-				"firstFields": 0,
-				"afterFields": nil,
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"projectV2": map[string]any{
-						"id": "an ID",
-					},
-				},
-			},
-		})
-
-	// template project
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`{"query":"mutation UnmarkProjectTemplate.*","variables":{"afterFields":null,"afterItems":null,"firstFields":0,"firstItems":0,"input":{"projectId":"an ID"}}}`).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"unmarkProjectV2AsTemplate": map[string]any{
-					"projectV2": map[string]any{
-						"id":     "project ID",
-						"number": 1,
-					},
-				},
-			},
-		})
-
-	client := queries.NewTestClient()
-
-	ios, _, stdout, _ := iostreams.Test()
-	ios.SetStdoutTTY(true)
-	config := markTemplateConfig{
-		opts: markTemplateOpts{
-			owner:  "github",
-			number: 1,
-			undo:   true,
-		},
-		client: client,
-		io:     ios,
-	}
-
-	err := runMarkTemplate(config)
-	assert.NoError(t, err)
-	assert.Equal(
-		t,
-		"Unmarked project 1 as a template.\n",
-		stdout.String())
-}
-
-func TestRunMarkTemplate_JSON(t *testing.T) {
-	defer gock.Off()
-	gock.Observe(gock.DumpRequest)
-
-	// get org ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query UserOrgOwner.*",
-			"variables": map[string]any{
-				"login": "github",
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"id": "an ID",
-				},
-			},
-			"errors": []any{
-				map[string]any{
-					"type": "NOT_FOUND",
-					"path": []string{"user"},
-				},
-			},
-		})
-
-	// get project ID
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		MatchType("json").
-		JSON(map[string]any{
-			"query": "query OrgProject.*",
-			"variables": map[string]any{
-				"login":       "github",
-				"number":      1,
-				"firstItems":  0,
-				"afterItems":  nil,
-				"firstFields": 0,
-				"afterFields": nil,
-			},
-		}).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"organization": map[string]any{
-					"projectV2": map[string]any{
-						"id": "an ID",
-					},
-				},
-			},
-		})
-
-	// template project
-	gock.New("https://api.github.com").
-		Post("/graphql").
-		BodyString(`{"query":"mutation MarkProjectTemplate.*","variables":{"afterFields":null,"afterItems":null,"firstFields":0,"firstItems":0,"input":{"projectId":"an ID"}}}`).
-		Reply(200).
-		JSON(map[string]any{
-			"data": map[string]any{
-				"markProjectV2AsTemplate": map[string]any{
-					"projectV2": map[string]any{
-						"id":     "project ID",
-						"number": 1,
-						"owner": map[string]any{
-							"__typename": "Organization",
-							"login":      "github",
-						},
-					},
-				},
-			},
-		})
-
-	client := queries.NewTestClient()
-
-	ios, _, stdout, _ := iostreams.Test()
-	config := markTemplateConfig{
-		opts: markTemplateOpts{
-			owner:    "github",
-			number:   1,
-			exporter: cmdutil.NewJSONExporter(),
-		},
-		client: client,
-		io:     ios,
-	}
-
-	err := runMarkTemplate(config)
-	assert.NoError(t, err)
-	assert.JSONEq(
-		t,
-		`{"number":1,"url":"","shortDescription":"","public":false,"closed":false,"title":"","id":"project ID","readme":"","items":{"totalCount":0},"fields":{"totalCount":0},"owner":{"type":"Organization","login":"github"}}`,
-		stdout.String())
+	require.ErrorIs(t, err, api.ErrNotSupported)
 }

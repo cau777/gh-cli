@@ -42,7 +42,8 @@ when running in REST-only mode.
 
 ## Projects & Discussions
 
-*Tracked as Project and Discussion commands are migrated.*
+- **`gh project` (all subcommands)**: GitHub does not provide a complete REST API covering Projects V2 owner lookups, project CRUD, views/templates, custom field management, item operations, or repository/team links (`gh project close`, `copy`, `create`, `delete`, `edit`, `field-create`, `field-delete`, `field-list`, `item-add`, `item-archive`, `item-create`, `item-delete`, `item-edit`, `item-list`, `link`, `list`, `mark-template`, `unlink`, `view`). All runtime `gh project` queries and mutations return `not all features are supported` (flag parsing and non-network input validation still execute).
+- **`gh discussion` (all subcommands)**: GitHub Discussions has no REST API (Discussions are only exposed over GraphQL). All `DiscussionClient` operations return `not all features are supported`.
 
 ## Other Commands & `gh api`
 
@@ -50,6 +51,7 @@ when running in REST-only mode.
   introspection (`__type`) was removed. Modern GitHub.com REST API
   (`2022-11-28`) capabilities are assumed; older GHES-specific GraphQL schema
   probes are no longer performed.
+- **`gh agent-task` (`resolveCapiURL`, `hydrateSessionPullRequestsAndUsers`)**: Copilot API (`capi`) endpoint discovery via GraphQL `viewer.copilotEndpoints` and batched GraphQL `nodes(ids: ...)` hydration of agent task sessions return `not all features are supported`. `GetPullRequestDatabaseID` uses REST `GET /repos/{owner}/{repo}/pulls/{number}`.
 - **`gh label list` (`--json createdAt,updatedAt`, `--sort created`)**: GitHub's REST `/repos/{owner}/{repo}/labels` endpoint does not expose label `createdAt` or `updatedAt` timestamps. Requesting `createdAt` or `updatedAt` via `--json` returns `not all features are supported`; filtering (`--search`) and sorting (`--sort name` / `--order`) are performed client-side.
 - **`gh org list`**: The REST `GET /user/orgs` endpoint does not return a `totalCount` field; header totals reflect fetched organizations.
 - **`gh ruleset list`**: REST ruleset summary listings omit individual rule definitions when returned by `/rulesets`, so summary `RULES` counts are `0` when omitted, and `totalCount` reflects fetched rulesets.

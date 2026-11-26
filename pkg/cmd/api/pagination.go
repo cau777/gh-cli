@@ -9,15 +9,20 @@ import (
 	"regexp"
 	"strings"
 
+	rootapi "github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/pkg/jsoncolor"
 )
 
 var linkRE = regexp.MustCompile(`<([^>]+)>;\s*rel="([^"]+)"`)
 
 func findNextPage(resp *http.Response) (string, bool) {
+	var reqURL *url.URL
+	if resp.Request != nil {
+		reqURL = resp.Request.URL
+	}
 	for _, m := range linkRE.FindAllStringSubmatch(resp.Header.Get("Link"), -1) {
 		if len(m) > 2 && m[2] == "next" {
-			return m[1], true
+			return rootapi.RewriteNextPageURL(reqURL, m[1]), true
 		}
 	}
 	return "", false

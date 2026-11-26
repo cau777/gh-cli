@@ -71,7 +71,7 @@ jobs:
               -o "${out_dir}/bin/${bin_name}" \
               ./cmd/gh
 
-            cp LICENSE UNSUPPORTED_FEATURES.md "${out_dir}/"
+            cp LICENSE DIFFERENCES.md UNSUPPORTED_FEATURES.md "${out_dir}/"
 
             if [ "${format}" = "tar.gz" ]; then
               tar -czf "dist/${pkg_dir}.tar.gz" -C stage "${pkg_dir}"

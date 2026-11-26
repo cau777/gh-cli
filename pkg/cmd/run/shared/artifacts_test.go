@@ -44,7 +44,7 @@ func TestDownloadWorkflowArtifactsPageinates(t *testing.T) {
 
 	secondReq := httpmock.QueryMatcher(
 		"GET",
-		testLinkUri,
+		fmt.Sprintf("repos/%s/%s/actions/runs/%s/artifacts", testRepoOwner, testRepoName, testRunId),
 		url.Values{"per_page": []string{"100"}, "page": []string{"2"}},
 	)
 

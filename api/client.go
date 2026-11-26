@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -24,6 +25,56 @@ const (
 )
 
 var linkRE = regexp.MustCompile(`<([^>]+)>;\s*rel="([^"]+)"`)
+
+var nextPageRewriteRules = []struct {
+	reqRE  *regexp.Regexp
+	nextRE *regexp.Regexp
+}{
+	{
+		reqRE:  regexp.MustCompile(`^(.*)/repos/([^/]+)/([^/]+)(/.*)?$`),
+		nextRE: regexp.MustCompile(`^(.*)/repositories/([0-9]+)(/.*)?$`),
+	},
+	{
+		reqRE:  regexp.MustCompile(`^(.*)/orgs/([^/]+)(/.*)?$`),
+		nextRE: regexp.MustCompile(`^(.*)/organizations/([0-9]+)(/.*)?$`),
+	},
+	{
+		reqRE:  regexp.MustCompile(`^(.*)/users/([^/]+)(/.*)?$`),
+		nextRE: regexp.MustCompile(`^(.*)/user/([0-9]+)(/.*)?$`),
+	},
+}
+
+// RewriteNextPageURL rewrites GitHub canonical ID paths in a pagination next
+// link (such as /repositories/<id>/..., /organizations/<id>/..., or
+// /user/<id>/...) back to the named path from reqURL (such as
+// /repos/<owner>/<repo>/..., /orgs/<org>/..., or /users/<user>/...) when the
+// prefix and trailing path segments match. Query parameters from nextLink are
+// preserved unchanged.
+func RewriteNextPageURL(reqURL *url.URL, nextLink string) string {
+	if reqURL == nil || nextLink == "" {
+		return nextLink
+	}
+
+	nextU, err := url.Parse(nextLink)
+	if err != nil {
+		return nextLink
+	}
+
+	for _, rule := range nextPageRewriteRules {
+		reqMatch := rule.reqRE.FindStringSubmatch(reqURL.Path)
+		nextMatch := rule.nextRE.FindStringSubmatch(nextU.Path)
+		if reqMatch == nil || nextMatch == nil {
+			continue
+		}
+		if reqMatch[1] == nextMatch[1] && reqMatch[len(reqMatch)-1] == nextMatch[len(nextMatch)-1] {
+			nextU.Path = reqURL.Path
+			nextU.RawPath = reqURL.RawPath
+			return nextU.String()
+		}
+	}
+
+	return nextLink
+}
 
 func NewClientFromHTTP(httpClient *http.Client) *Client {
 	client := &Client{http: httpClient}
@@ -133,10 +184,14 @@ func (c Client) RESTWithNext(hostname string, method string, p string, body io.R
 		return "", err
 	}
 
+	var reqURL *url.URL
+	if resp.Request != nil {
+		reqURL = resp.Request.URL
+	}
 	var next string
 	for _, m := range linkRE.FindAllStringSubmatch(resp.Header.Get("Link"), -1) {
 		if len(m) > 2 && m[2] == "next" {
-			next = m[1]
+			next = RewriteNextPageURL(reqURL, m[1])
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/cli/cli/v2/pkg/httpmock"
@@ -159,6 +160,117 @@ func TestRESTWithNext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "item", response.Name)
 	assert.Equal(t, "https://api.github.com/repos/owner/repo/items?page=2", next)
+}
+
+func TestRESTWithNextRewritesCanonicalIDPath(t *testing.T) {
+	reg := &httpmock.Registry{}
+	defer reg.Verify(t)
+	client := newTestClient(reg)
+
+	reg.Register(
+		httpmock.REST(http.MethodGet, "repos/cau777/gh-rest/actions/workflows"),
+		func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				Request:    req,
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewBufferString(`{"workflows": []}`)),
+				Header: http.Header{
+					"Content-Type": {"application/json"},
+					"Link":         {`<https://api.github.com/repositories/1345296475/actions/workflows?per_page=1&page=2>; rel="next"`},
+				},
+			}, nil
+		},
+	)
+
+	var response struct{}
+	next, err := client.RESTWithNext("github.com", http.MethodGet, "repos/cau777/gh-rest/actions/workflows?per_page=1", nil, &response)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.github.com/repos/cau777/gh-rest/actions/workflows?per_page=1&page=2", next)
+}
+
+func TestRewriteNextPageURL(t *testing.T) {
+	mustURL := func(raw string) *url.URL {
+		u, err := url.Parse(raw)
+		require.NoError(t, err)
+		return u
+	}
+
+	tests := []struct {
+		name     string
+		reqURL   *url.URL
+		nextLink string
+		want     string
+	}{
+		{
+			name:     "repos canonical id path rewritten to named path",
+			reqURL:   mustURL("https://api.github.com/repos/cau777/gh-rest/actions/workflows?per_page=1"),
+			nextLink: "https://api.github.com/repositories/1345296475/actions/workflows?per_page=1&page=2",
+			want:     "https://api.github.com/repos/cau777/gh-rest/actions/workflows?per_page=1&page=2",
+		},
+		{
+			name:     "GHES prefix preserved",
+			reqURL:   mustURL("https://example.com/api/v3/repos/owner/repo/issues"),
+			nextLink: "https://example.com/api/v3/repositories/42/issues?page=2",
+			want:     "https://example.com/api/v3/repos/owner/repo/issues?page=2",
+		},
+		{
+			name:     "orgs canonical id path rewritten to named path",
+			reqURL:   mustURL("https://api.github.com/orgs/my-org/repos"),
+			nextLink: "https://api.github.com/organizations/99/repos?page=2",
+			want:     "https://api.github.com/orgs/my-org/repos?page=2",
+		},
+		{
+			name:     "users canonical id path rewritten to named path",
+			reqURL:   mustURL("https://api.github.com/users/octocat/repos"),
+			nextLink: "https://api.github.com/user/583231/repos?page=2",
+			want:     "https://api.github.com/users/octocat/repos?page=2",
+		},
+		{
+			name:     "non-matching path left unchanged",
+			reqURL:   mustURL("https://api.github.com/issues"),
+			nextLink: "https://api.github.com/repositories/1227/issues?page=2",
+			want:     "https://api.github.com/repositories/1227/issues?page=2",
+		},
+		{
+			name:     "nil reqURL left unchanged",
+			reqURL:   nil,
+			nextLink: "https://api.github.com/repositories/1345296475/actions/workflows?page=2",
+			want:     "https://api.github.com/repositories/1345296475/actions/workflows?page=2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, RewriteNextPageURL(tt.reqURL, tt.nextLink))
+		})
+	}
+}
+
+func TestHTTPHeadersUnauthenticated(t *testing.T) {
+	var gotReq *http.Request
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotReq = r
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	ios, _, _, stderr := iostreams.Test()
+	httpClient, err := NewHTTPClient(HTTPClientOptions{
+		AppVersion:       "v1.2.3",
+		RefreshingConfig: tinyConfig{},
+		Log:              ios.ErrOut,
+	})
+	require.NoError(t, err)
+	client := NewClientFromHTTP(httpClient)
+
+	err = client.REST(ts.URL, "GET", ts.URL+"/user/repos", nil, nil)
+	require.NoError(t, err)
+
+	assert.Nil(t, gotReq.Header.Values("Authorization"))
+	assert.Equal(t, "GitHub CLI v1.2.3", gotReq.Header.Get("User-Agent"))
+	assert.Equal(t, "2022-11-28", gotReq.Header.Get("X-GitHub-Api-Version"))
+	assert.Equal(t, "", stderr.String())
 }
 
 func TestRESTWithNextNoContent(t *testing.T) {

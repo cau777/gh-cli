@@ -252,6 +252,9 @@ func fetchDraftRelease(ctx context.Context, httpClient *http.Client, repo ghrepo
 		var releases []Release
 		decodeErr := json.NewDecoder(resp.Body).Decode(&releases)
 		next := nextLinkFromHeader(resp.Header.Get("Link"))
+		if resp.Request != nil {
+			next = api.RewriteNextPageURL(resp.Request.URL, next)
+		}
 		resp.Body.Close()
 		if decodeErr != nil {
 			return nil, decodeErr

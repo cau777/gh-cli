@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,24 @@ func Test_findNextPage(t *testing.T) {
 				},
 			},
 			want:  "https://api.github.com/issues?page=2",
+			want1: true,
+		},
+		{
+			name: "rewrites canonical repository id path to named repo path",
+			resp: &http.Response{
+				Request: &http.Request{
+					URL: &url.URL{
+						Scheme:   "https",
+						Host:     "api.github.com",
+						Path:     "/repos/cau777/gh-rest/actions/workflows",
+						RawQuery: "per_page=1",
+					},
+				},
+				Header: http.Header{
+					"Link": []string{`<https://api.github.com/repositories/1345296475/actions/workflows?per_page=1&page=2>; rel="next"`},
+				},
+			},
+			want:  "https://api.github.com/repos/cau777/gh-rest/actions/workflows?per_page=1&page=2",
 			want1: true,
 		},
 	}

@@ -424,7 +424,7 @@ func TestListRun(t *testing.T) {
 						WorkflowRuns: runs[0:100],
 					}), "Link", `<https://api.github.com/repositories/123/actions/runs?per_page=100&page=2>; rel="next"`))
 				reg.Register(
-					httpmock.REST("GET", "repositories/123/actions/runs"),
+					httpmock.REST("GET", "repos/OWNER/REPO/actions/runs"),
 					httpmock.JSONResponse(shared.RunsPayload{
 						WorkflowRuns: runs[100:],
 					}))

@@ -450,7 +450,7 @@ func (a *API) ListCodespaces(ctx context.Context, opts ListCodespacesOptions) (c
 			return nil, fmt.Errorf("error unmarshalling response: %w", err)
 		}
 
-		nextURL := findNextPage(resp.Header.Get("Link"))
+		nextURL := findNextPage(resp)
 		codespaces = append(codespaces, response.Codespaces...)
 
 		if nextURL == "" || (limit > 0 && len(codespaces) >= limit) {
@@ -473,10 +473,14 @@ func (a *API) ListCodespaces(ctx context.Context, opts ListCodespacesOptions) (c
 
 var linkRE = regexp.MustCompile(`<([^>]+)>;\s*rel="([^"]+)"`)
 
-func findNextPage(linkValue string) string {
-	for _, m := range linkRE.FindAllStringSubmatch(linkValue, -1) {
+func findNextPage(resp *http.Response) string {
+	var reqURL *url.URL
+	if resp.Request != nil {
+		reqURL = resp.Request.URL
+	}
+	for _, m := range linkRE.FindAllStringSubmatch(resp.Header.Get("Link"), -1) {
 		if len(m) > 2 && m[2] == "next" {
-			return m[1]
+			return api.RewriteNextPageURL(reqURL, m[1])
 		}
 	}
 	return ""
@@ -523,7 +527,7 @@ func (a *API) GetOrgMemberCodespace(ctx context.Context, orgName string, userNam
 			}
 		}
 
-		nextURL := findNextPage(resp.Header.Get("Link"))
+		nextURL := findNextPage(resp)
 		if nextURL == "" {
 			break
 		}
@@ -1132,7 +1136,7 @@ func (a *API) ListDevContainers(ctx context.Context, repoID int64, branch string
 			return nil, fmt.Errorf("error unmarshalling response: %w", err)
 		}
 
-		nextURL := findNextPage(resp.Header.Get("Link"))
+		nextURL := findNextPage(resp)
 		devcontainers = append(devcontainers, response.Devcontainers...)
 
 		if nextURL == "" || (limit > 0 && len(devcontainers) >= limit) {

@@ -1,0 +1,104 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+        description: "The tag name for the release (e.g. v0.1.0 or v0.1.0-rc.1)."
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Validate tag name
+        env:
+          TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Invalid tag name format: $TAG_NAME. Must be in the form v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+
+      - name: Build and package binaries
+        env:
+          TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG_NAME#v}"
+          BUILD_DATE="$(date -u +%Y-%m-%d)"
+          LDFLAGS="-s -w -X github.com/cli/cli/v2/internal/build.Version=${VERSION} -X github.com/cli/cli/v2/internal/build.Date=${BUILD_DATE}"
+
+          rm -rf dist stage
+          mkdir -p dist stage
+
+          targets=(
+            "linux/amd64/linux/tar.gz/gh"
+            "linux/arm64/linux/tar.gz/gh"
+            "darwin/amd64/macOS/zip/gh"
+            "darwin/arm64/macOS/zip/gh"
+            "windows/amd64/windows/zip/gh.exe"
+            "windows/arm64/windows/zip/gh.exe"
+          )
+
+          for target in "${targets[@]}"; do
+            IFS='/' read -r goos goarch os_label format bin_name <<< "$target"
+            pkg_dir="gh_${VERSION}_${os_label}_${goarch}"
+            out_dir="stage/${pkg_dir}"
+            mkdir -p "${out_dir}/bin"
+
+            echo "Building ${goos}/${goarch} -> ${pkg_dir}.${format}"
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
+              -trimpath \
+              -ldflags="${LDFLAGS}" \
+              -o "${out_dir}/bin/${bin_name}" \
+              ./cmd/gh
+
+            cp LICENSE UNSUPPORTED_FEATURES.md "${out_dir}/"
+
+            if [ "${format}" = "tar.gz" ]; then
+              tar -czf "dist/${pkg_dir}.tar.gz" -C stage "${pkg_dir}"
+            else
+              (cd stage && zip -rq "../dist/${pkg_dir}.zip" "${pkg_dir}")
+            fi
+          done
+
+          tmp_checksums="$(mktemp)"
+          (cd dist && sha256sum gh_* > "${tmp_checksums}")
+          mv "${tmp_checksums}" "dist/gh_${VERSION}_checksums.txt"
+          ls -la dist
+
+      - name: Publish GitHub Release
+        env:
+          TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG_NAME#v}"
+          release_args=(
+            "$TAG_NAME"
+            --title "gh ${VERSION}"
+            --target "${{ github.sha }}"
+            --generate-notes
+          )
+          if [[ "$TAG_NAME" == *-* ]]; then
+            release_args+=( --prerelease )
+          fi
+          gh release create "${release_args[@]}" -- dist/gh_*

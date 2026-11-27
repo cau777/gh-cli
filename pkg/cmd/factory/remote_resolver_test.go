@@ -45,7 +45,7 @@ func Test_remoteResolver(t *testing.T) {
 				}
 				return cfg
 			}(),
-			output: []string{"origin"},
+			wantsErr: true,
 		},
 		{
 			name: "no git remotes",

@@ -53,6 +53,9 @@ func (rr *remoteResolver) Resolver() func() (context.Remotes, error) {
 		}
 
 		authedHosts := cfg.Authentication().Hosts()
+		if len(authedHosts) == 0 {
+			return nil, errors.New("could not find any host configurations")
+		}
 		defaultHost, src := cfg.Authentication().DefaultHost()
 
 		// Use set to dedupe list of hosts

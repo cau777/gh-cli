@@ -242,7 +242,6 @@ func addAuthHeaderRoundTripper(rt http.RoundTripper, tokenForHost func(host stri
 		// Only set header if an initial request or redirect request to the same host as the initial request.
 		// If the host has changed during a redirect do not add the authentication token header.
 		if redirectHostnameChange {
-			req.Header.Del(authorization)
 			return rt.RoundTrip(req)
 		}
 
@@ -250,8 +249,6 @@ func addAuthHeaderRoundTripper(rt http.RoundTripper, tokenForHost func(host stri
 		token := tokenForHost(hostnameInRequest)
 		if token != "" {
 			req.Header.Set(authorization, fmt.Sprintf("token %s", token))
-		} else {
-			req.Header.Del(authorization)
 		}
 
 		return rt.RoundTrip(req)

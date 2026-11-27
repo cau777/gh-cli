@@ -247,32 +247,6 @@ func TestRewriteNextPageURL(t *testing.T) {
 	}
 }
 
-func TestHTTPHeadersUnauthenticated(t *testing.T) {
-	var gotReq *http.Request
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotReq = r
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer ts.Close()
-
-	ios, _, _, stderr := iostreams.Test()
-	httpClient, err := NewHTTPClient(HTTPClientOptions{
-		AppVersion:       "v1.2.3",
-		RefreshingConfig: tinyConfig{},
-		Log:              ios.ErrOut,
-	})
-	require.NoError(t, err)
-	client := NewClientFromHTTP(httpClient)
-
-	err = client.REST(ts.URL, "GET", ts.URL+"/user/repos", nil, nil)
-	require.NoError(t, err)
-
-	assert.Nil(t, gotReq.Header.Values("Authorization"))
-	assert.Equal(t, "GitHub CLI v1.2.3", gotReq.Header.Get("User-Agent"))
-	assert.Equal(t, "2022-11-28", gotReq.Header.Get("X-GitHub-Api-Version"))
-	assert.Equal(t, "", stderr.String())
-}
-
 func TestRESTWithNextNoContent(t *testing.T) {
 	reg := &httpmock.Registry{}
 	defer reg.Verify(t)
